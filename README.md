@@ -6,6 +6,7 @@ The main reference manual is that book which contains core design and core conce
 
 # Syntax
 ## Function
+### 1. Normal function
 The skeleton of a function definition looks like this:
 ```
 (def name (param*)
@@ -13,7 +14,7 @@ The skeleton of a function definition looks like this:
 ```
 Where `*` means you can create sequential ones.
 
-## Lambda
+### 2. Lambda
 When it seems like overkill to define a new function with **def**, you can create an "anonymous" function using a **lambda** expression
 ```
 ((lambda ( x y) (+ x y)) 2 3)
@@ -31,3 +32,6 @@ Each initialization form is either a list containing a variable name and an init
 
 # Progress
 It works in progress as I'm read Practical Common List now, you can also contributed your awesome code if you are interested in it.
+- `Let*`
+- `defvar`
+- `defconstant`

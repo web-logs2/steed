@@ -195,6 +195,8 @@ class Evaluator:
     def eval_sexpr(self, sexpr):
         if re.match("\".*\"", sexpr) or re.match("-?[0-9][0-9.]*", sexpr):
             return eval(sexpr)
+        elif sexpr == "true" or sexpr == "false":
+            return eval(sexpr.title())
         else:
             val = self.find_var(sexpr)
             if val is not None:
@@ -228,6 +230,18 @@ class Evaluator:
             # (quote ...)
             Evaluator.log_trace(sexpr_list, sexpr_list)
             return sexpr_list
+        elif action == 'if':
+            # (if cond (then-block) (else-block）)
+            # (if cond (then-block))
+            cond = self.eval_sexpr_list(sexpr_list[1])
+            val = None
+            if cond:
+                val = self.eval_sexpr_list(sexpr_list[2])
+            else:
+                if len(sexpr_list) == 4:
+                    val = self.eval_sexpr_list(sexpr_list[3])
+            Evaluator.log_trace(sexpr_list, val)
+            return val
         elif action == 'let':
             # (let ((a 11) (b 12) c) ...)
             var_bindings = sexpr_list[1]

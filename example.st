@@ -12,3 +12,8 @@
         (format "{}" b)
     )
 )
+
+(if true ( format "{}" "then-block"))
+(if true ( format "{}" "then-block") (format "{}" "else-block") )
+(if false ( format "{}" "then-block") (format "{}" "else-block"))
+(if false ( format "{}" "then-block"))
