@@ -30,6 +30,9 @@ You can introduce new variables by **let** special operator. The skeleton of a *
 where each variable is a variable initialization form. 
 Each initialization form is either a list containing a variable name and an initial value form or as a shorthand for initializing the variable to NIL
 
+## Quote
+You can use `(quote ...)` or `’(...)` to skip evaluate of s-expressions.
+
 # Progress
 It works in progress as I'm read Practical Common List now, you can also contributed your awesome code if you are interested in it.
 - `Let*`

@@ -116,8 +116,8 @@ class Transformer:
 
 class Evaluator:
     def __init__(self, sexprs):
-        self.sexprs = sexprs
         self.contexts = [{"func": [func for func in TheBuiltin], "var": []}]
+        self.macros = []
 
     def find_func(self, name):
         for i in reversed(range(len(self.contexts))):
@@ -143,6 +143,9 @@ class Evaluator:
         else:
             ctx['func'].append(func)
 
+    def add_macro(self, macro):
+        self.macros.append(macro)
+
     def new_context(self):
         return {"func": [], "var": []}
 
@@ -164,13 +167,13 @@ class Evaluator:
                 ret_val = var
         return ret_val
 
-    def call(self, func, sexprs):
+    def call(self, func, sexpr_list):
         assert len(func['param']) == len(
-            sexprs) - 1, f"Function {func['name']} expects {len(func['param'])} parameter but found {len(sexprs) - 1}"
+            sexpr_list) - 1, f"Function {func['name']} expects {len(func['param'])} parameter but found {len(sexpr_list) - 1}"
         # Prologue, prepare arguments
         new_ctx = self.new_context()
         for i in range(0, len(func['param'])):
-            self.add_variable({"name": func['param'][i], "value": self.eval_sexpr_list(sexprs[i + 1])}, new_ctx)
+            self.add_variable({"name": func['param'][i], "value": self.eval_sexpr_list(sexpr_list[i + 1])}, new_ctx)
 
         # Call builtin or user defined function
         self.enter_context(new_ctx)
@@ -184,13 +187,12 @@ class Evaluator:
             ret_val = self.eval_block(body)
         self.leave_context()
 
-        Evaluator.log_trace(sexprs, ret_val)
+        Evaluator.log_trace(sexpr_list, ret_val)
         return ret_val
 
-    def eval_top_level(self):
+    def eval_top_level(self, sexpr_list):
         for i in sexpr_list:
             val = self.eval_sexpr_list(i)
-            print(val)
 
     def eval_sexpr(self, sexpr):
         if re.match("\".*\"", sexpr) or re.match("-?[0-9][0-9.]*", sexpr):
@@ -202,7 +204,7 @@ class Evaluator:
             if val is not None:
                 return val
 
-        raise ValueError(f"Unknown single s-expression {sexpr}")
+        raise ValueError(f'Unknown single s-expression {sexpr}')
 
     def eval_sexpr_list(self, sexpr_list):
         if not Evaluator.is_sexpr_list(sexpr_list):
@@ -215,7 +217,7 @@ class Evaluator:
             return None
 
         action = sexpr_list[0]
-        if type(action) is list:
+        if self.is_sexpr_list(action):
             # (<func> ...)
             action = self.eval_sexpr_list(action)
             sexpr_list[0] = action
@@ -274,6 +276,8 @@ class Evaluator:
             self.add_func(func)
             Evaluator.log_trace(sexpr_list, func)
             return func
+        elif action == 'macro':
+            raise ValueError("Macro should be already collected and expanded")
         else:
             # (foo ...)
             var = self.find_var(action)
@@ -287,7 +291,43 @@ class Evaluator:
                 Evaluator.log_trace(sexpr_list, val)
                 return val
 
-        raise ValueError("Should not reach here")
+        raise ValueError(f'Unknown s-expression {sexpr_list}')
+
+    def collect_macro(self):
+        for idx, expr in enumerate(sexpr_list):
+            if self.is_sexpr_list(expr) and len(expr) > 0:
+                if expr[0] == 'macro':
+                    macro = {'name': expr[1], 'param': expr[2], 'body': expr[3:]}
+                    self.add_macro(macro)
+                    del sexpr_list[idx]
+
+    def find_macro(self, name):
+        for macro in self.macros:
+            if macro['name'] == name:
+                return macro
+        return None
+
+    def do_expand(self, macro, sexpr_list, new_sexpr_list):
+        for idx, expr in enumerate(new_sexpr_list):
+            if self.is_sexpr_list(expr):
+                self.do_expand(macro, sexpr_list, expr)
+            else:
+                for pi in range(len(macro['param'])):
+                    if macro['param'][pi] == expr:
+                        new_sexpr_list[idx] = sexpr_list[1 + pi]
+
+    def macro_expand(self, sexpr_list):
+        if not self.is_sexpr_list(sexpr_list):
+            return None
+        for idx, sexpr in enumerate(sexpr_list):
+            if self.is_sexpr_list(sexpr) and len(sexpr) > 0 and type(sexpr[0]) is str:
+                m = self.find_macro(sexpr[0])
+                if m is not None:
+                    new_body = m['body']
+                    self.do_expand(m, sexpr, new_body)
+                    sexpr_list[idx] = new_body
+            else:
+                self.macro_expand(sexpr)
 
     @staticmethod
     def is_sexpr_list(a):
@@ -309,4 +349,8 @@ if __name__ == '__main__':
         sexpr_list = t.make_sexpr_list()
 
     e = Evaluator(sexpr_list)
-    e.eval_top_level()
+    print(f"== Initial S-expression {sexpr_list}")
+    e.collect_macro()
+    e.macro_expand(sexpr_list)
+    print(f"== Macro Expanded {sexpr_list}")
+    e.eval_top_level(sexpr_list)

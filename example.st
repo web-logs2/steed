@@ -17,3 +17,7 @@
 (if true ( format "{}" "then-block") (format "{}" "else-block") )
 (if false ( format "{}" "then-block") (format "{}" "else-block"))
 (if false ( format "{}" "then-block"))
+
+(macro True () true)
+
+(if (True) ( format "{}" "then-block"))
