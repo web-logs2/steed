@@ -2,3 +2,4 @@
  (format "{}" a )
 )
 (concate "hello" "world")
+((lambda ( x y) (+ x y)) 2 3)
