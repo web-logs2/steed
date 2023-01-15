@@ -1,5 +1,5 @@
 # Steed
-Hello, this is a free and complete lisp implementation, most of my Lisp knowledge comes from Practical Common List book,
+Hello, this is a free and complete lisp implementation that contains f, most of my Lisp knowledge comes from Practical Common List book,
 and some old memories. All of these make up my impression on Lisp.
 The main reference manual is that book which contains core design and core concepts of Lisp,
 I will re-design and implement the parts that do not suit my taste.

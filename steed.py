@@ -11,20 +11,18 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>
+import os
 import re
 import string
-
-t = """
-(def hello-world ()
- (- (* 2 5) 5)
- (+ 3 3)
-)
-(+ 1 23)
-(hello-world)
-"""
+import sys
 
 TheBuiltin = [
-    {'name': "format", 'param': ['a', 'b'], 'body': None}
+    {'name': "format", 'param': ['fmt', "args"], 'body': lambda ctxs, args: print(args['fmt'].format(args['args']))},
+    {'name': "+", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] + args['b']},
+    {'name': "-", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] - args['b']},
+    {'name': "*", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] * args['b']},
+    {'name': "/", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] / args['b']},
+    {'name': "&", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] % args['b']},
 ]
 
 
@@ -116,10 +114,19 @@ def make_sexpr(text):
     return sexprs
 
 
-def eval_sexpr(ctx, sexprs):
+def eval_sexpr_list(contexts, sexprs):
+    def eval_sexpr(sexpr):
+        if re.match("\".*\"", sexprs) or re.match("-?[0-9][0-9.]]*", sexprs):
+            return eval(sexprs)
+        else:
+            for var in contexts[-1]['var']:
+                if var['name'] == sexprs:
+                    return var['value']
+        raise ValueError(f"Unknown single s-expression {sexprs}")
+
     if type(sexprs) is not list:
-        val = eval(sexprs)
-        # log_trace(sexprs, val)
+        val = eval_sexpr(sexprs)
+        log_trace(sexprs, val)
         return val
 
     if len(sexprs) == 0:
@@ -127,46 +134,75 @@ def eval_sexpr(ctx, sexprs):
         return None
 
     action = sexprs[0]
-    if action in '+-*/%':
-        # arithmetic
-        code = f"{eval_sexpr(ctx, sexprs[1])}{action}{eval_sexpr(ctx, sexprs[2])}"
-        val = eval(code)
-        log_trace(sexprs, val)
-        return val
-    elif action == 'quote' or action == '\'':
+    if action == 'quote' or action == '\'':
         # quote
         log_trace(sexprs, sexprs)
         return sexprs
     elif action == 'def':
         # function definition
         func = {'name': sexprs[1], 'param': sexprs[2], 'body': sexprs[3:]}
-        ctx['func'].append(func)
+        contexts[-1]['func'].append(func)
         log_trace(sexprs, func)
         return func
     else:
+        def find_func(ctxs, name):
+            for ctx_idx in reversed(range(len(ctxs))):
+                for func in contexts[ctx_idx]['func']:
+                    if func['name'] == action:
+                        return func
+            return None
+
         # general identifier, either a use of var or function call
-        for v in ctx['var']:
-            if v['name'] == action:
-                log_trace(sexprs, v['value'])
-                return v['value']
+        for var in contexts[-1]['var']:
+            if var['name'] == action:
+                log_trace(sexprs, var['value'])
+                return var['value']
 
-        for f in ctx['func']:
-            if f['name'] == action:
-                ctx['var'].append({"name": f['param'], "value": None})
-                body = f['body']
-                ret_val = None
+        func = find_func(contexts, action)
+        if func is not None:
+            # Prepare arguments
+            new_ctx = {"func": [], "var": []}
+
+            if len(func['param']) != len(sexprs) - 1:
+                raise ValueError(
+                    f"Function {func['name']} expects {len(func['param'])} parameter but found {len(sexprs) - 1}")
+
+            for i in range(0, len(func['param'])):
+                new_ctx['var'].append({"name": func['param'][i], "value": eval_sexpr_list(contexts, sexprs[i + 1])})
+
+            # Call builtin or user defined function
+            body = func['body']
+            ret_val = None
+            contexts.append(new_ctx)
+            if callable(body):
+                args = {}
+                for item in new_ctx['var']:
+                    args[item['name']] = item['value']
+                ret_val = body(contexts, args)
+            else:
                 for i in range(len(body)):
-                    v = eval_sexpr(ctx, body[i])
-                    if i == len(body) - 1:
-                        ret_val = v
-                log_trace(sexprs, ret_val)
-                return ret_val
+                    var = eval_sexpr_list(contexts, body[i])
+                if i == len(body) - 1:
+                    ret_val = var
+            del contexts[-1]
 
+            log_trace(sexprs, ret_val)
+            return ret_val
     raise ValueError("Should not reach here")
 
 
 if __name__ == '__main__':
-    sexprs = make_sexpr(t)
-    ctx = {"func": [], "var": []}
+    if len(sys.argv) < 2:
+        print("No source file")
+        exit(-1)
+
+    with open(sys.argv[1]) as file:
+        content = file.read()
+        sexprs = make_sexpr(content)
+
+    # register builtin functions
+    contexts = [{"func": [func for func in TheBuiltin], "var": []}]
+
+    # evaluate top-level expressions
     for i in sexprs:
-        val = eval_sexpr(ctx, i)
+        val = eval_sexpr_list(contexts, i)
