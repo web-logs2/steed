@@ -15,11 +15,31 @@ import re
 import string
 
 t = """
-(- (+ 1 2333) 5)
+(def hello-world ()
+ (- (* 2 5) 5)
+ (+ 3 3)
+)
+(+ 1 23)
+(hello-world)
 """
+
+TheBuiltin = [
+    {'name': "format", 'param': ['a', 'b'], 'body': None}
+]
+
+
+def log_trace(a, b):
+    print(f"== Evaluate S-expression {a} that produces {b}({type(b)})")
 
 
 def make_sexpr(text):
+    """
+    convert source code to s-expressions and make s-expressions to python
+    objects to facilitate further use
+
+    :param text: source code
+    :return: s-expression list
+    """
     text = text.replace('\n', '')
 
     def unit(idx):
@@ -87,26 +107,66 @@ def make_sexpr(text):
         del sexprs[i:k]
         sexprs[i] = sub
 
-    to_py_list(0)
+    # process top-level s-expressions
+    i = 0
+    while i < len(sexprs):
+        if sexprs[i] == '(':
+            to_py_list(i)
+        i += 1
     return sexprs
 
 
 def eval_sexpr(ctx, sexprs):
     if type(sexprs) is not list:
-        return eval(sexprs)
+        val = eval(sexprs)
+        # log_trace(sexprs, val)
+        return val
 
     if len(sexprs) == 0:
+        log_trace(sexprs, None)
         return None
+
     action = sexprs[0]
     if action in '+-*/%':
+        # arithmetic
         code = f"{eval_sexpr(ctx, sexprs[1])}{action}{eval_sexpr(ctx, sexprs[2])}"
-        return eval(code)
+        val = eval(code)
+        log_trace(sexprs, val)
+        return val
+    elif action == 'quote' or action == '\'':
+        # quote
+        log_trace(sexprs, sexprs)
+        return sexprs
+    elif action == 'def':
+        # function definition
+        func = {'name': sexprs[1], 'param': sexprs[2], 'body': sexprs[3:]}
+        ctx['func'].append(func)
+        log_trace(sexprs, func)
+        return func
+    else:
+        # general identifier, either a use of var or function call
+        for v in ctx['var']:
+            if v['name'] == action:
+                log_trace(sexprs, v['value'])
+                return v['value']
+
+        for f in ctx['func']:
+            if f['name'] == action:
+                ctx['var'].append({"name": f['param'], "value": None})
+                body = f['body']
+                ret_val = None
+                for i in range(len(body)):
+                    v = eval_sexpr(ctx, body[i])
+                    if i == len(body) - 1:
+                        ret_val = v
+                log_trace(sexprs, ret_val)
+                return ret_val
+
+    raise ValueError("Should not reach here")
 
 
 if __name__ == '__main__':
     sexprs = make_sexpr(t)
-    ctx = {}
-    print(sexprs)
+    ctx = {"func": [], "var": []}
     for i in sexprs:
         val = eval_sexpr(ctx, i)
-        print(val)
