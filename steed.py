@@ -182,8 +182,8 @@ def eval_sexpr_list(contexts, sexprs):
             else:
                 for i in range(len(body)):
                     var = eval_sexpr_list(contexts, body[i])
-                if i == len(body) - 1:
-                    ret_val = var
+                    if i == len(body) - 1:
+                        ret_val = var
             del contexts[-1]
 
             log_trace(sexprs, ret_val)
