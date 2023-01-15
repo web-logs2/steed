@@ -1,2 +1,8 @@
-你好，这是一个简答但是完整的lisp实现，我的Lisp知识大部分来自于COMMONSLISP这本书，以及一些古老的记忆，
-所有这些组成了我对Lisp的影响，我的实现手册就是这本书，不不符合我口味的部分，我将按照自己的喜好设计并实现。
+# Steed
+Hello, this is a free and complete lisp implementation, most of my Lisp knowledge comes from Practical Common List book,
+and some old memories. All of these make up my impression on Lisp.
+The main reference manual is that book which contains core design and core concepts of Lisp,
+I will re-design and implement the parts that do not suit my taste.
+
+# Progress
+It works in progress, you can also contributed your awesome code if you are interested in it.
