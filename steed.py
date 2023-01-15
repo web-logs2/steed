@@ -126,39 +126,66 @@ class Evaluator:
     def find_var(self, name):
         for var in self.contexts[-1]['var']:
             if var['name'] == name:
-                Evaluator.log_trace(sexprs, var['value'])
                 return var['value']
 
+    def add_variable(self, var, ctx=None):
+        if ctx is None:
+            self.contexts[-1]['var'].append(var)
+        else:
+            ctx['var'].append(var)
+
+    def add_func(self, func, ctx=None):
+        if ctx is None:
+            self.contexts[-1]['func'].append(func)
+        else:
+            ctx['func'].append(func)
+
+    def new_context(self):
+        return {"func": [], "var": []}
+
+    def enter_context(self, ctx=None):
+        if ctx is None:
+            self.contexts.append({"func": [], "var": []})
+        else:
+            self.contexts.append(ctx)
+
+    def leave_context(self):
+        del self.contexts[-1]
+
+    def eval_block(self, body_list):
+        ret_val = None
+        for i in range(len(body_list)):
+            var = self.eval_sexpr_list(body_list[i])
+            Evaluator.log_trace(body_list, var)
+            if i == len(body_list) - 1:
+                ret_val = var
+        return ret_val
+
     def call(self, func, sexprs):
-        if len(func['param']) != len(sexprs) - 1:
-            raise ValueError(
-                f"Function {func['name']} expects {len(func['param'])} parameter but found {len(sexprs) - 1}")
+        assert len(func['param']) == len(
+            sexprs) - 1, f"Function {func['name']} expects {len(func['param'])} parameter but found {len(sexprs) - 1}"
         # Prologue, prepare arguments
-        new_ctx = {"func": [], "var": []}
+        new_ctx = self.new_context()
         for i in range(0, len(func['param'])):
-            new_ctx['var'].append({"name": func['param'][i], "value": self.eval_sexpr_list(sexprs[i + 1])})
+            self.add_variable({"name": func['param'][i], "value": self.eval_sexpr_list(sexprs[i + 1])}, new_ctx)
 
         # Call builtin or user defined function
+        self.enter_context(new_ctx)
         body = func['body']
-        ret_val = None
-        self.contexts.append(new_ctx)
         if callable(body):
             args = {}
             for item in new_ctx['var']:
                 args[item['name']] = item['value']
             ret_val = body(self.contexts, args)
         else:
-            for i in range(len(body)):
-                var = self.eval_sexpr_list(body[i])
-                if i == len(body) - 1:
-                    ret_val = var
-        del self.contexts[-1]
+            ret_val = self.eval_block(body)
+        self.leave_context()
 
         Evaluator.log_trace(sexprs, ret_val)
         return ret_val
 
     def eval_top_level(self):
-        for i in sexprs:
+        for i in sexpr_list:
             val = self.eval_sexpr_list(i)
             print(val)
 
@@ -171,52 +198,82 @@ class Evaluator:
                     return var['value']
         raise ValueError(f"Unknown single s-expression {sexpr}")
 
-    def eval_sexpr_list(self, sexprs):
-        if type(sexprs) is not list:
-            val = self.eval_sexpr(sexprs)
-            Evaluator.log_trace(sexprs, val)
+    def eval_sexpr_list(self, sexpr_list):
+        if not Evaluator.is_sexpr_list(sexpr_list):
+            val = self.eval_sexpr(sexpr_list)
+            Evaluator.log_trace(sexpr_list, val)
             return val
 
-        if len(sexprs) == 0:
-            Evaluator.log_trace(sexprs, None)
+        if len(sexpr_list) == 0:
+            Evaluator.log_trace(sexpr_list, None)
             return None
 
-        action = sexprs[0]
+        action = sexpr_list[0]
         if type(action) is list:
+            # (<func> ...)
             action = self.eval_sexpr_list(action)
-            sexprs[0] = action
+            sexpr_list[0] = action
 
         if "body" in action:
-            # ((lambda ...) a b)
+            # (<func> ...)
             func = action
-            return self.call(func, sexprs)
-        if action == 'quote' or action == '\'':
-            # quote
-            Evaluator.log_trace(sexprs, sexprs)
-            return sexprs
+            val = self.call(func, sexpr_list)
+            Evaluator.log_trace(sexpr_list, func)
+            return val
+        elif action == 'quote' or action == '\'':
+            # (quote ...)
+            Evaluator.log_trace(sexpr_list, sexpr_list)
+            return sexpr_list
+        elif action == 'let':
+            # (let ((a 11) (b 12) c) ...)
+            var_bindings = sexpr_list[1]
+            new_ctx = self.new_context()
+            for var_binding in var_bindings:
+                if Evaluator.is_sexpr_list(var_binding):
+                    assert len(var_binding) == 2, "must be initialization of var binding"
+                    name = var_binding[0]
+                    value = self.eval_sexpr_list(var_binding[1])
+                    self.add_variable({"name": name, "value": value}, new_ctx)
+                else:
+                    assert len(var_binding) == 1, "must be default initialization of var binding"
+                    name = var_binding[0]
+                    self.add_variable({"name": name, "value": None}, new_ctx)
+
+            self.enter_context(new_ctx)
+            ret_val = self.eval_block(sexpr_list[2:])
+            self.leave_context()
+            Evaluator.log_trace(sexpr_list, ret_val)
+            return ret_val
         elif action == 'def':
-            # function definition
-            func = {'name': sexprs[1], 'param': sexprs[2], 'body': sexprs[3:]}
-            self.contexts[-1]['func'].append(func)
-            Evaluator.log_trace(sexprs, func)
+            # (def name () ...)
+            func = {'name': sexpr_list[1], 'param': sexpr_list[2], 'body': sexpr_list[3:]}
+            self.add_func(func)
+            Evaluator.log_trace(sexpr_list, func)
             return func
         elif action == 'lambda':
-            # lambda function definition
-            func = {'name': '<lambda>', 'param': sexprs[1], 'body': sexprs[2:]}
-            self.contexts[-1]['func'].append(func)
-            Evaluator.log_trace(sexprs, func)
+            # (lambda () ...)
+            func = {'name': '<lambda>', 'param': sexpr_list[1], 'body': sexpr_list[2:]}
+            self.add_func(func)
+            Evaluator.log_trace(sexpr_list, func)
             return func
         else:
-            # general identifier, either a use of var or function call
+            # (foo ...)
             var = self.find_var(action)
             if var is not None:
+                Evaluator.log_trace(sexpr_list, var)
                 return var
 
             func = self.find_func(action)
             if func is not None:
-                return self.call(func, sexprs)
+                val = self.call(func, sexpr_list)
+                Evaluator.log_trace(sexpr_list, val)
+                return val
 
         raise ValueError("Should not reach here")
+
+    @staticmethod
+    def is_sexpr_list(a):
+        return type(a) is list
 
     @staticmethod
     def log_trace(a, b):
@@ -230,7 +287,7 @@ if __name__ == '__main__':
 
     with open(sys.argv[1]) as file:
         content = file.read()
-        sexprs = make_sexpr_list(content)
+        sexpr_list = make_sexpr_list(content)
 
-    e = Evaluator(sexprs)
+    e = Evaluator(sexpr_list)
     e.eval_top_level()

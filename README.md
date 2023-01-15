@@ -6,7 +6,7 @@ The main reference manual is that book which contains core design and core conce
 
 # Syntax
 ## Function
-The skeleton of a function definitio looks like this:
+The skeleton of a function definition looks like this:
 ```
 (def name (param*)
   body-form*)
@@ -14,10 +14,20 @@ The skeleton of a function definitio looks like this:
 Where `*` means you can create sequential ones.
 
 ## Lambda
-When it seems like overkill to define a new function with DEFUN, you can create an "anonymous" function using a lambda expression
+When it seems like overkill to define a new function with **def**, you can create an "anonymous" function using a **lambda** expression
 ```
 ((lambda ( x y) (+ x y)) 2 3)
 ```
 You can imagine that *Lambda* is name of this anonymous function, it works exactly the same as normal function.
+
+## Variable
+You can introduce new variables by **let** special operator. The skeleton of a **let** form looks like this:
+```
+(let ((x 10) (y 20) z)
+  ...)
+```
+where each variable is a variable initialization form. 
+Each initialization form is either a list containing a variable name and an initial value form or as a shorthand for initializing the variable to NIL
+
 # Progress
 It works in progress as I'm read Practical Common List now, you can also contributed your awesome code if you are interested in it.

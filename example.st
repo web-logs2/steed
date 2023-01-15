@@ -3,3 +3,12 @@
 )
 (concate "hello" "world")
 ((lambda ( x y) (+ x y)) 2 3)
+
+(let ((a 7) (b 2) c)
+    (format "{}" a)
+    (format "{}" b)
+    (let ((c 4) (b 11))
+        (format "{}" c)
+        (format "{}" b)
+    )
+)
