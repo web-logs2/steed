@@ -11,11 +11,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>
-import os
 import re
-import string
 import sys
-from random import random
 
 TheBuiltin = [
     {'name': "format", 'param': ['fmt', "args"], 'body': lambda ctxs, args: print(args['fmt'].format(args['args']))},
@@ -27,7 +24,7 @@ TheBuiltin = [
 ]
 
 
-def make_sexpr_list(text):
+class Transformer:
     """
     convert source code to s-expressions and make s-expressions to python
     objects to facilitate further use
@@ -35,80 +32,86 @@ def make_sexpr_list(text):
     :param text: source code
     :return: s-expression list
     """
-    text = text.replace('\n', '')
 
-    def unit(idx):
+    def __init__(self, text):
+        self.sexprs = []
+        self.text = text
+
+    def unit(self, idx):
         def accept_if(i, cond):
-            s = text[i]
-            while i + 1 < len(text):
+            s = self.text[i]
+            while i + 1 < len(self.text):
                 i += 1
-                ch = text[i]
+                ch = self.text[i]
                 if cond(ch):
-                    s += text[i]
+                    s += self.text[i]
                 else:
                     break
             return s, i
 
-        if text[idx].isalpha():
+        if self.text[idx].isalpha():
             # identifiers
             return accept_if(idx, lambda c: ('a' <= c <= 'z') or ('A' <= c <= 'Z') or c == '-')
-        if text[idx] in '()+*/%\'':
+        elif self.text[idx] in '()+*/%\'':
             # operators
-            return text[idx], i + 1
-        elif text[idx] == '\"':
+            return self.text[idx], idx + 1
+        elif self.text[idx] == '\"':
             # string
-            end = text.index('\"', idx + 1)
-            return text[idx:end + 1], end + 1
-        elif text[idx].isnumeric() or text[idx] == '-':
+            end = self.text.index('\"', idx + 1)
+            return self.text[idx:end + 1], end + 1
+        elif self.text[idx].isnumeric() or self.text[idx] == '-':
             # minus(-) operator
-            if text[idx] == '-':
-                if idx + 1 < len(text) and (not text[idx + 1].isnumeric()):
+            if self.text[idx] == '-':
+                if idx + 1 < len(self.text) and (not self.text[idx + 1].isnumeric()):
                     return "-", idx + 1
             # 3.14, -3
             return accept_if(idx, lambda c: c.isnumeric() or c == '.')
-        elif text[idx] == ' ':
+        elif self.text[idx] == ' ':
             return " ", idx + 1
-        return "Invalid-" + text[idx], idx + 1
+        return "Invalid-" + self.text[idx], idx + 1
 
-    i = 0
-    sexprs = []
-    while i < len(text):
-        lexeme, ni = unit(i)
-        i = ni
-        if lexeme != ' ':
-            sexprs.append(lexeme)
-    invalid = [item.replace('Invalid-', '') for item in sexprs if 'Invalid-' in item]
-    if len(invalid) > 0:
-        print("SyntaxError: Found invalid content " + str(invalid))
-        exit(-1)
+    def check_syntax(self):
+        invalid = [item.replace('Invalid-', '') for item in self.sexprs if 'Invalid-' in item]
+        if len(invalid) > 0:
+            print("SyntaxError: Found invalid content " + str(invalid))
+            exit(-1)
 
     # i.e. ['(', '+', '1', '2', ')'] =-> [['+', '1', '2']]
-    def to_py_list(i):
-        if sexprs[i] != '(':
-            raise ValueError("Must start with (")
+    def to_py_list(self, i):
+        assert self.sexprs[i] == '(', "Must start with ("
         sub = []
         k = i + 1
-        while k < len(sexprs):
-            if sexprs[k] == '(':
-                to_py_list(k)
-            if sexprs[k] != ')':
-                sub.append(sexprs[k])
+        while k < len(self.sexprs):
+            if self.sexprs[k] == '(':
+                self.to_py_list(k)
+            if self.sexprs[k] != ')':
+                sub.append(self.sexprs[k])
             else:
                 break
             k += 1
-        if sexprs[k] != ')':
-            raise ValueError("Must close with )")
+        assert self.sexprs[k] == ')', "Must start with )"
         # delete elements i range of [), so we can replace these elements with sub
-        del sexprs[i:k]
-        sexprs[i] = sub
+        del self.sexprs[i:k]
+        self.sexprs[i] = sub
 
-    # process top-level s-expressions
-    i = 0
-    while i < len(sexprs):
-        if sexprs[i] == '(':
-            to_py_list(i)
-        i += 1
-    return sexprs
+    def make_sexpr_list(self):
+        self.text = self.text.replace('\n', '')
+        # source code to s-expressions in a whole
+        i = 0
+        while i < len(self.text):
+            lexeme, ni = self.unit(i)
+            i = ni
+            if lexeme != ' ':
+                self.sexprs.append(lexeme)
+        self.check_syntax()
+
+        # process top-level s-expressions
+        i = 0
+        while i < len(self.sexprs):
+            if self.sexprs[i] == '(':
+                self.to_py_list(i)
+            i += 1
+        return self.sexprs
 
 
 class Evaluator:
@@ -193,9 +196,10 @@ class Evaluator:
         if re.match("\".*\"", sexpr) or re.match("-?[0-9][0-9.]*", sexpr):
             return eval(sexpr)
         else:
-            for var in self.contexts[-1]['var']:
-                if var['name'] == sexpr:
-                    return var['value']
+            val = self.find_var(sexpr)
+            if val is not None:
+                return val
+
         raise ValueError(f"Unknown single s-expression {sexpr}")
 
     def eval_sexpr_list(self, sexpr_list):
@@ -287,7 +291,8 @@ if __name__ == '__main__':
 
     with open(sys.argv[1]) as file:
         content = file.read()
-        sexpr_list = make_sexpr_list(content)
+        t = Transformer(content)
+        sexpr_list = t.make_sexpr_list()
 
     e = Evaluator(sexpr_list)
     e.eval_top_level()
