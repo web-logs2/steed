@@ -154,7 +154,7 @@ class Evaluator:
     forms, macro forms, and special forms.
     """
 
-    def __init__(self, sexprs):
+    def __init__(self):
         self.contexts = [{"func": [func for func in TheBuiltin], "var": []}]
         self.macros = []
 
@@ -211,14 +211,34 @@ class Evaluator:
                 lst[i] = next_value
             i += 1
 
-    def eval_block(self, body_list):
+    def eval_block(self, lst):
         ret_val = None
-        for i in range(len(body_list)):
-            var = self.eval_list(body_list[i])
-            Evaluator.log_trace(body_list, var)
-            if i == len(body_list) - 1:
+        for i in range(len(lst)):
+            var = self.eval_list(lst[i])
+            Evaluator.log_trace(lst, var)
+            if i == len(lst) - 1:
                 ret_val = var
         return ret_val
+
+    def expand_macro_call(self, macro, sexpr_list):
+        assert len(macro['param']) == len(
+            sexpr_list) - 1, f"Macro {macro['name']} expects {len(macro['param'])} parameter but found {len(sexpr_list) - 1}"
+        # Prologue, prepare arguments
+        new_ctx = self.new_context()
+        for i in range(0, len(macro['param'])):
+            # pass source code as arguments directly
+            self.add_variable({"name": macro['param'][i], "value": sexpr_list[i + 1]}, new_ctx)
+
+        # Call builtin or user defined function
+        self.enter_context(new_ctx)
+        body = macro['body']
+        for i, expr in enumerate(body):
+            val = self.eval_list(expr)
+            # Replace macro body with evaluated value
+            body[i] = val
+        self.leave_context()
+        # TODO: revise this later
+        return body[0]
 
     def call(self, func, sexpr_list):
         assert len(func['param']) == len(
@@ -366,7 +386,9 @@ class Evaluator:
                 val = self.call(func, sexpr_list)
                 Evaluator.log_trace(sexpr_list, val)
                 return val
-
+            macro = self.find_macro(action)
+            if macro is not None:
+                raise ValueError(f"Macro {action} is not expanded!")
         raise ValueError(f'Unknown s-expression {sexpr_list}')
 
     def collect_macro(self):
@@ -383,27 +405,19 @@ class Evaluator:
                 return macro
         return None
 
-    def do_expand(self, macro, sexpr_list, new_sexpr_list):
-        for idx, expr in enumerate(new_sexpr_list):
-            if self.is_sexpr_list(expr):
-                self.do_expand(macro, sexpr_list, expr)
-            else:
-                for pi in range(len(macro['param'])):
-                    if macro['param'][pi] == expr:
-                        new_sexpr_list[idx] = sexpr_list[1 + pi]
-
-    def macro_expand(self, sexpr_list):
+    def expand_macro(self, sexpr_list):
         if not self.is_sexpr_list(sexpr_list):
             return None
         for idx, sexpr in enumerate(sexpr_list):
-            if self.is_sexpr_list(sexpr) and len(sexpr) > 0 and type(sexpr[0]) is str:
-                m = self.find_macro(sexpr[0])
-                if m is not None:
-                    new_body = m['body']
-                    self.do_expand(m, sexpr, new_body)
-                    sexpr_list[idx] = new_body
-            else:
-                self.macro_expand(sexpr)
+            if self.is_sexpr_list(sexpr) and len(sexpr) > 0:
+                if type(sexpr[0]) is str:
+                    macro = self.find_macro(sexpr[0])
+                    if macro is not None:
+                        assert len(sexpr[1:]) == len(macro['param']), "num of macro parameters mismatched"
+                        expanded = self.expand_macro_call(macro, sexpr)
+                        sexpr_list[idx] = expanded
+                        continue
+                self.expand_macro(sexpr)
 
     @staticmethod
     def is_sexpr_list(a):
@@ -414,19 +428,23 @@ class Evaluator:
         print(f"== Evaluate S-expression {a} that produces {b}({type(b)})")
 
 
+def generate_sexprs_from_file(path):
+    with open(path) as file:
+        content = file.read()
+        t = Transformer(content)
+        sexpr_list = t.make_sexpr_list()
+        return sexpr_list
+
+
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("No source file")
         exit(-1)
 
-    with open(sys.argv[1]) as file:
-        content = file.read()
-        t = Transformer(content)
-        sexpr_list = t.make_sexpr_list()
-
-    e = Evaluator(sexpr_list)
+    sexpr_list = generate_sexprs_from_file(sys.argv[1])
+    e = Evaluator()
     print(f"== Initial S-expression {sexpr_list}")
     e.collect_macro()
-    e.macro_expand(sexpr_list)
+    e.expand_macro(sexpr_list)
     print(f"== Macro Expanded {sexpr_list}")
     e.eval_top_level(sexpr_list)
