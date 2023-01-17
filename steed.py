@@ -11,6 +11,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>
+import copy
 import re
 import sys
 
@@ -230,7 +231,8 @@ class Evaluator:
 
         # Call builtin or user defined function
         self.enter_context(new_ctx)
-        body = macro['body']
+        # Clone macro code body as template for later code generation
+        body = copy.deepcopy(macro['body'])
         for i, expr in enumerate(body):
             val = self.eval_list(expr)
             # Replace macro body with evaluated value

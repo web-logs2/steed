@@ -29,3 +29,4 @@
     `(if ,cond (block ,body))
 )
 (format "{}" (when true (+1 2)) )
+(format "{}" (when false (+1 2)) )
