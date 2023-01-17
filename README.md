@@ -30,8 +30,16 @@ You can introduce new variables by **let** special operator. The skeleton of a *
 where each variable is a variable initialization form. 
 Each initialization form is either a list containing a variable name and an initial value form or as a shorthand for initializing the variable to NIL
 
-## Quote
-You can use `(quote ...)` or `’(...)` to skip evaluate of s-expressions.
+## Special operators
+
+### 1. quote or `'`
+You can use `(quote ...)` to skip evaluate of s-expressions.
+
+### 2. block
+Another special operator, block, executes any number of forms in order and returns the value of the last form
+```
+(block (+ 1 1) (- 1 1) (* 1 2)
+```
 
 # Progress
 It works in progress as I'm read Practical Common List now, you can also contributed your awesome code if you are interested in it.

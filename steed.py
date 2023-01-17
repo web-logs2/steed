@@ -37,7 +37,7 @@ class Transformer:
         self.sexprs = []
         self.text = text
 
-    def unit(self, idx):
+    def atom(self, idx):
         def accept_if(i, cond):
             s = self.text[i]
             while i + 1 < len(self.text):
@@ -52,7 +52,7 @@ class Transformer:
         if self.text[idx].isalpha():
             # identifiers
             return accept_if(idx, lambda c: ('a' <= c <= 'z') or ('A' <= c <= 'Z') or c == '-')
-        elif self.text[idx] in '()+*/%\'':
+        elif self.text[idx] in '()+*/%><=\'':
             # operators
             return self.text[idx], idx + 1
         elif self.text[idx] == '\"':
@@ -99,7 +99,7 @@ class Transformer:
         # source code to s-expressions in a whole
         i = 0
         while i < len(self.text):
-            lexeme, ni = self.unit(i)
+            lexeme, ni = self.atom(i)
             i = ni
             if lexeme != ' ':
                 self.sexprs.append(lexeme)
@@ -115,6 +115,28 @@ class Transformer:
 
 
 class Evaluator:
+    """
+    Logic of evaluator from practical common lisp book:
+
+    The simplest Lisp forms, atoms, can be divided into two categories: symbols and everything else.
+    A symbol, evaluated as a form, is considered the name of a variable and evaluates to the current
+    value of the variable.11 I'll discuss in Chapter 6 how variables get their values in the first place.
+    You should also note that certain "variables" are that old oxymoron of programming: "constant
+    variables." For instance, the symbol PI names a constant variable whose value is the best possible
+    floating-point approximation to the mathematical constant pi.
+
+    All other atoms--numbers and strings are the kinds you've seen so far--are self-evaluating objects.
+    This means when such an expression is passed to the notional evaluation function, it's simply returned.
+
+    Things get more interesting when we consider how lists are evaluated. All legal list forms start with
+    a symbol, but three kinds of list forms are evaluated in three quite different ways. To determine what
+    kind of form a given list is, the evaluator must determine whether the symbol that starts the list is
+    the name of a function, a macro, or a special operator. If the symbol hasn't been defined yet--as may
+    be the case if you're compiling code that contains references to functions that will be defined
+    later--it's assumed to be a function name. I'll refer to the three kinds of forms as function call
+    forms, macro forms, and special forms.
+    """
+
     def __init__(self, sexprs):
         self.contexts = [{"func": [func for func in TheBuiltin], "var": []}]
         self.macros = []
@@ -161,7 +183,7 @@ class Evaluator:
     def eval_block(self, body_list):
         ret_val = None
         for i in range(len(body_list)):
-            var = self.eval_sexpr_list(body_list[i])
+            var = self.eval_list(body_list[i])
             Evaluator.log_trace(body_list, var)
             if i == len(body_list) - 1:
                 ret_val = var
@@ -173,7 +195,7 @@ class Evaluator:
         # Prologue, prepare arguments
         new_ctx = self.new_context()
         for i in range(0, len(func['param'])):
-            self.add_variable({"name": func['param'][i], "value": self.eval_sexpr_list(sexpr_list[i + 1])}, new_ctx)
+            self.add_variable({"name": func['param'][i], "value": self.eval_list(sexpr_list[i + 1])}, new_ctx)
 
         # Call builtin or user defined function
         self.enter_context(new_ctx)
@@ -192,23 +214,25 @@ class Evaluator:
 
     def eval_top_level(self, sexpr_list):
         for i in sexpr_list:
-            val = self.eval_sexpr_list(i)
+            val = self.eval_list(i)
 
-    def eval_sexpr(self, sexpr):
-        if re.match("\".*\"", sexpr) or re.match("-?[0-9][0-9.]*", sexpr):
-            return eval(sexpr)
-        elif sexpr == "true" or sexpr == "false":
-            return eval(sexpr.title())
+    def eval_atom(self, atom):
+        # If it's a self-evaluating atom
+        if re.match("\".*\"", atom) or re.match("-?[0-9][0-9.]*", atom):
+            return eval(atom)
+        elif atom == "true" or atom == "false":
+            return eval(atom.title())
         else:
-            val = self.find_var(sexpr)
+            # Otherwise, it's a representation of variable
+            val = self.find_var(atom)
             if val is not None:
                 return val
 
-        raise ValueError(f'Unknown single s-expression {sexpr}')
+        raise ValueError(f'Unknown single s-expression {atom}')
 
-    def eval_sexpr_list(self, sexpr_list):
+    def eval_list(self, sexpr_list):
         if not Evaluator.is_sexpr_list(sexpr_list):
-            val = self.eval_sexpr(sexpr_list)
+            val = self.eval_atom(sexpr_list)
             Evaluator.log_trace(sexpr_list, val)
             return val
 
@@ -219,7 +243,7 @@ class Evaluator:
         action = sexpr_list[0]
         if self.is_sexpr_list(action):
             # (<func> ...)
-            action = self.eval_sexpr_list(action)
+            action = self.eval_list(action)
             sexpr_list[0] = action
 
         if "body" in action:
@@ -228,20 +252,30 @@ class Evaluator:
             val = self.call(func, sexpr_list)
             Evaluator.log_trace(sexpr_list, func)
             return val
-        elif action == 'quote' or action == '\'':
+        elif action == 'quote':
             # (quote ...)
             Evaluator.log_trace(sexpr_list, sexpr_list)
             return sexpr_list
+        elif action == 'block':
+            exprs = sexpr_list[1:]
+            ret_val = None
+            for i, expr in enumerate(exprs):
+                if i == len(exprs) - 1:
+                    ret_val = self.eval_list(expr)
+                else:
+                    self.eval_list(expr)  # and drop return value
+            Evaluator.log_trace(sexpr_list, ret_val)
+            return ret_val
         elif action == 'if':
             # (if cond (then-block) (else-block）)
             # (if cond (then-block))
-            cond = self.eval_sexpr_list(sexpr_list[1])
+            cond = self.eval_list(sexpr_list[1])
             val = None
             if cond:
-                val = self.eval_sexpr_list(sexpr_list[2])
+                val = self.eval_list(sexpr_list[2])
             else:
                 if len(sexpr_list) == 4:
-                    val = self.eval_sexpr_list(sexpr_list[3])
+                    val = self.eval_list(sexpr_list[3])
             Evaluator.log_trace(sexpr_list, val)
             return val
         elif action == 'let':
@@ -252,7 +286,7 @@ class Evaluator:
                 if Evaluator.is_sexpr_list(var_binding):
                     assert len(var_binding) == 2, "must be initialization of var binding"
                     name = var_binding[0]
-                    value = self.eval_sexpr_list(var_binding[1])
+                    value = self.eval_list(var_binding[1])
                     self.add_variable({"name": name, "value": value}, new_ctx)
                 else:
                     assert len(var_binding) == 1, "must be default initialization of var binding"

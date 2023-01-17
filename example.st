@@ -21,3 +21,5 @@
 (macro True () true)
 
 (if (True) ( format "{}" "then-block"))
+
+(format "{}" (block (+ 1 1) (- 1 1) (* 9 9)))
