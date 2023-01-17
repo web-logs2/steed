@@ -215,7 +215,6 @@ class Evaluator:
         ret_val = None
         for i in range(len(lst)):
             var = self.eval_list(lst[i])
-            Evaluator.log_trace(lst, var)
             if i == len(lst) - 1:
                 ret_val = var
         return ret_val
@@ -240,13 +239,13 @@ class Evaluator:
         # TODO: revise this later
         return body[0]
 
-    def call(self, func, sexpr_list):
+    def call(self, func, lst):
         assert len(func['param']) == len(
-            sexpr_list) - 1, f"Function {func['name']} expects {len(func['param'])} parameter but found {len(sexpr_list) - 1}"
+            lst) - 1, f"Function {func['name']} expects {len(func['param'])} parameter but found {len(lst) - 1}"
         # Prologue, prepare arguments
         new_ctx = self.new_context()
         for i in range(0, len(func['param'])):
-            self.add_variable({"name": func['param'][i], "value": self.eval_list(sexpr_list[i + 1])}, new_ctx)
+            self.add_variable({"name": func['param'][i], "value": self.eval_list(lst[i + 1])}, new_ctx)
 
         # Call builtin or user defined function
         self.enter_context(new_ctx)
@@ -260,12 +259,8 @@ class Evaluator:
             ret_val = self.eval_block(body)
         self.leave_context()
 
-        Evaluator.log_trace(sexpr_list, ret_val)
+        Evaluator.log_trace(lst, ret_val)
         return ret_val
-
-    def eval_top_level(self, sexpr_list):
-        for i in sexpr_list:
-            val = self.eval_list(i)
 
     def eval_atom(self, atom):
         # If it's a self-evaluating atom
@@ -281,27 +276,27 @@ class Evaluator:
 
         raise ValueError(f'Unknown single s-expression {atom}')
 
-    def eval_list(self, sexpr_list):
-        if not Evaluator.is_sexpr_list(sexpr_list):
-            val = self.eval_atom(sexpr_list)
-            Evaluator.log_trace(sexpr_list, val)
+    def eval_list(self, lst):
+        if not Evaluator.is_sexpr_list(lst):
+            val = self.eval_atom(lst)
+            Evaluator.log_trace(lst, val)
             return val
 
-        if len(sexpr_list) == 0:
-            Evaluator.log_trace(sexpr_list, None)
+        if len(lst) == 0:
+            Evaluator.log_trace(lst, None)
             return None
 
-        action = sexpr_list[0]
+        action = lst[0]
         if self.is_sexpr_list(action):
             # (<func> ...)
             action = self.eval_list(action)
-            sexpr_list[0] = action
+            lst[0] = action
 
         if "body" in action:
             # (<func> ...)
             func = action
-            val = self.call(func, sexpr_list)
-            Evaluator.log_trace(sexpr_list, func)
+            val = self.call(func, lst)
+            Evaluator.log_trace(lst, func)
             return val
         elif action == 'quote' or action == "'":
             # (quote a)
@@ -309,40 +304,35 @@ class Evaluator:
             # Note, quote has been processed when making the s-expression list
             # so any form of ' ... should be (` ...), i.e. its operand is surrounded
             # with list, we need to unpack it here
-            Evaluator.log_trace(sexpr_list, sexpr_list[1])
-            return sexpr_list[1]
+            Evaluator.log_trace(lst, lst[1])
+            return lst[1]
         elif action == '`':
             # `((+ 1 2) ,(+1 2))
-            ret_val = sexpr_list[1]
+            ret_val = lst[1]
             self.allow_evaluation(ret_val)
-            Evaluator.log_trace(sexpr_list, ret_val)
+            Evaluator.log_trace(lst, ret_val)
             return ret_val
         elif action == 'block':
             # (block (..) (..) (..))
-            exprs = sexpr_list[1:]
-            ret_val = None
-            for i, expr in enumerate(exprs):
-                if i == len(exprs) - 1:
-                    ret_val = self.eval_list(expr)
-                else:
-                    self.eval_list(expr)  # and drop return value
-            Evaluator.log_trace(sexpr_list, ret_val)
+            exprs = lst[1:]
+            ret_val = self.eval_block(exprs)
+            Evaluator.log_trace(lst, ret_val)
             return ret_val
         elif action == 'if':
             # (if cond (then-block) (else-block）)
             # (if cond (then-block))
-            cond = self.eval_list(sexpr_list[1])
+            cond = self.eval_list(lst[1])
             val = None
             if cond:
-                val = self.eval_list(sexpr_list[2])
+                val = self.eval_list(lst[2])
             else:
-                if len(sexpr_list) == 4:
-                    val = self.eval_list(sexpr_list[3])
-            Evaluator.log_trace(sexpr_list, val)
+                if len(lst) == 4:
+                    val = self.eval_list(lst[3])
+            Evaluator.log_trace(lst, val)
             return val
         elif action == 'let':
             # (let ((a 11) (b 12) c) ...)
-            var_bindings = sexpr_list[1]
+            var_bindings = lst[1]
             new_ctx = self.new_context()
             for var_binding in var_bindings:
                 if Evaluator.is_sexpr_list(var_binding):
@@ -356,21 +346,21 @@ class Evaluator:
                     self.add_variable({"name": name, "value": None}, new_ctx)
 
             self.enter_context(new_ctx)
-            ret_val = self.eval_block(sexpr_list[2:])
+            ret_val = self.eval_block(lst[2:])
             self.leave_context()
-            Evaluator.log_trace(sexpr_list, ret_val)
+            Evaluator.log_trace(lst, ret_val)
             return ret_val
         elif action == 'def':
             # (def name () ...)
-            func = {'name': sexpr_list[1], 'param': sexpr_list[2], 'body': sexpr_list[3:]}
+            func = {'name': lst[1], 'param': lst[2], 'body': lst[3:]}
             self.add_func(func)
-            Evaluator.log_trace(sexpr_list, func)
+            Evaluator.log_trace(lst, func)
             return func
         elif action == 'lambda':
             # (lambda () ...)
-            func = {'name': '<lambda>', 'param': sexpr_list[1], 'body': sexpr_list[2:]}
+            func = {'name': '<lambda>', 'param': lst[1], 'body': lst[2:]}
             self.add_func(func)
-            Evaluator.log_trace(sexpr_list, func)
+            Evaluator.log_trace(lst, func)
             return func
         elif action == 'macro':
             raise ValueError("Macro should be already collected and expanded")
@@ -378,18 +368,18 @@ class Evaluator:
             # (foo ...)
             var = self.find_var(action)
             if var is not None:
-                Evaluator.log_trace(sexpr_list, var)
+                Evaluator.log_trace(lst, var)
                 return var
 
             func = self.find_func(action)
             if func is not None:
-                val = self.call(func, sexpr_list)
-                Evaluator.log_trace(sexpr_list, val)
+                val = self.call(func, lst)
+                Evaluator.log_trace(lst, val)
                 return val
             macro = self.find_macro(action)
             if macro is not None:
                 raise ValueError(f"Macro {action} is not expanded!")
-        raise ValueError(f'Unknown s-expression {sexpr_list}')
+        raise ValueError(f'Unknown s-expression {lst}')
 
     def collect_macro(self):
         for idx, expr in enumerate(sexpr_list):
@@ -447,4 +437,4 @@ if __name__ == '__main__':
     e.collect_macro()
     e.expand_macro(sexpr_list)
     print(f"== Macro Expanded {sexpr_list}")
-    e.eval_top_level(sexpr_list)
+    e.eval_block(sexpr_list)
