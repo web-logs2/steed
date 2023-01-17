@@ -52,7 +52,7 @@ class Transformer:
         if self.text[idx].isalpha():
             # identifiers
             return accept_if(idx, lambda c: ('a' <= c <= 'z') or ('A' <= c <= 'Z') or c == '-')
-        elif self.text[idx] in '()+*/%><=\'':
+        elif self.text[idx] in '()+*/%><=\'`,':
             # operators
             return self.text[idx], idx + 1
         elif self.text[idx] == '\"':
@@ -90,9 +90,23 @@ class Transformer:
                 break
             k += 1
         assert self.sexprs[k] == ')', "Must start with )"
-        # delete elements i range of [), so we can replace these elements with sub
         del self.sexprs[i:k]
         self.sexprs[i] = sub
+
+    def surround_with_list(self, lst):
+        """
+        `(...) => [`, (...)] surround with list, note this should be unpacked
+         during evaluation time
+        """
+        k = 0
+        while k < len(lst):
+            if type(lst[k]) is list:
+                self.surround_with_list(lst[k])
+            elif lst[k] == "'" or lst[k] == '`' or lst[k] == ',':
+                sub = [lst[k], lst[k + 1]]
+                del lst[k:k + 1]
+                lst[k] = sub
+            k += 1
 
     def make_sexpr_list(self):
         self.text = self.text.replace('\n', '')
@@ -111,6 +125,9 @@ class Transformer:
             if self.sexprs[i] == '(':
                 self.to_py_list(i)
             i += 1
+
+        self.surround_with_list(self.sexprs)
+
         return self.sexprs
 
 
@@ -179,6 +196,20 @@ class Evaluator:
 
     def leave_context(self):
         del self.contexts[-1]
+
+    def allow_evaluation(self, lst):
+        """
+        [, (...)] => (...)
+        """
+        i = 0
+        while i < len(lst):
+            if self.is_sexpr_list(lst[i]):
+                self.allow_evaluation(lst[i])
+            elif lst[i] == ',':
+                next_value = self.eval_list(lst[i + 1])
+                del lst[i:i + 1]
+                lst[i] = next_value
+            i += 1
 
     def eval_block(self, body_list):
         ret_val = None
@@ -252,11 +283,22 @@ class Evaluator:
             val = self.call(func, sexpr_list)
             Evaluator.log_trace(sexpr_list, func)
             return val
-        elif action == 'quote':
-            # (quote ...)
-            Evaluator.log_trace(sexpr_list, sexpr_list)
-            return sexpr_list
+        elif action == 'quote' or action == "'":
+            # (quote a)
+            # '(a b)
+            # Note, quote has been processed when making the s-expression list
+            # so any form of ' ... should be (` ...), i.e. its operand is surrounded
+            # with list, we need to unpack it here
+            Evaluator.log_trace(sexpr_list, sexpr_list[1])
+            return sexpr_list[1]
+        elif action == '`':
+            # `((+ 1 2) ,(+1 2))
+            ret_val = sexpr_list[1]
+            self.allow_evaluation(ret_val)
+            Evaluator.log_trace(sexpr_list, ret_val)
+            return ret_val
         elif action == 'block':
+            # (block (..) (..) (..))
             exprs = sexpr_list[1:]
             ret_val = None
             for i, expr in enumerate(exprs):

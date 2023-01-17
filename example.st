@@ -18,8 +18,9 @@
 (if false ( format "{}" "then-block") (format "{}" "else-block"))
 (if false ( format "{}" "then-block"))
 
-(macro True () true)
-
-(if (True) ( format "{}" "then-block"))
-
 (format "{}" (block (+ 1 1) (- 1 1) (* 9 9)))
+
+(format "{}" '(1 2 3))
+(format "{}" '3)
+(format "{}" `(4 5))
+(format "{}" `(4 5 (7 8 ,(+ 6 4))))

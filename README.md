@@ -1,5 +1,5 @@
 # Steed
-<img src="logo.png?raw=true" align="right" alt="" weight="120" height="120"/>Hello, this is a free and complete lisp implementation, most of my Lisp knowledge comes from [Practical Common List](https://gigamonkeys.com/book/) book,
+<img src="logo.png?raw=true" align="right" alt="" weight="120" height="120"/>Hello, this is a free and complete lisp implementation, most of my Lisp knowledge comes from [Practical Common List](https://gigamonkeys.com/book/) and [Successful Lisp](https://dept-info.labri.fr/~strandh/Teaching/MTP/Common/David-Lamkins/contents.html) books,
 and some old memories. All of these make up my impression on Lisp.
 The main reference manual is that book which contains core design and core concepts of Lisp, I will re-design and implement the parts that do not suit my taste.
 
