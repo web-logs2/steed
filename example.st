@@ -27,3 +27,7 @@
 
 (format "{}" (when true (+1 2)) )
 (format "{}" (when false (+1 2)) )
+
+(assert (<= 3 5) "yes")
+(assert (== (>=4 99) false) "yes")
+(assert (!= 3 5) "yes")

@@ -15,13 +15,29 @@ import copy
 import re
 import sys
 
+
+def steed_asert(ctx, args):
+    if not args['cond']:
+        raise RuntimeError(args['msg'])
+
+
 TheBuiltin = [
     {'name': "format", 'param': ['fmt', "args"], 'body': lambda ctxs, args: print(args['fmt'].format(args['args']))},
+    {'name': "assert", 'param': ['cond', "msg"], 'body': lambda ctxs, args: steed_asert(ctxs, args)},
     {'name': "+", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] + args['b']},
     {'name': "-", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] - args['b']},
     {'name': "*", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] * args['b']},
     {'name': "/", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] / args['b']},
     {'name': "&", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] % args['b']},
+    {'name': ">", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] > args['b']},
+    {'name': ">=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] >= args['b']},
+    {'name': "<", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] < args['b']},
+    {'name': "<=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] <= args['b']},
+    {'name': "!=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] != args['b']},
+    {'name': "==", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] == args['b']},
+    {'name': "and", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] and args['b']},
+    {'name': "or", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] or args['b']},
+    {'name': "not", 'param': ['a'], 'body': lambda ctxs, args: not args['a']},
 ]
 
 
@@ -53,9 +69,15 @@ class Transformer:
         if self.text[idx].isalpha():
             # identifiers
             return accept_if(idx, lambda c: ('a' <= c <= 'z') or ('A' <= c <= 'Z') or c == '-')
-        elif self.text[idx] in '()+*/%><=\'`,':
+        elif self.text[idx] in '()+*/%\'`,':
             # operators
             return self.text[idx], idx + 1
+        elif self.text[idx] in '><=!':
+            tk = self.text[idx]
+            if self.text[idx + 1] == '=':
+                tk += '='
+                return tk, idx + 2
+            return tk, idx + 1
         elif self.text[idx] == '\"':
             # string
             end = self.text.index('\"', idx + 1)
@@ -217,7 +239,6 @@ class Evaluator:
         print(f"{'..' * self.ident} {a} => {b}")
 
     def expand_macro_call(self, macro, sexpr_list):
-        self.ident += 2
         assert len(macro['param']) == len(
             sexpr_list) - 1, f"Macro {macro['name']} expects {len(macro['param'])} parameter but found {len(sexpr_list) - 1}"
         # Prologue, prepare arguments
@@ -227,6 +248,7 @@ class Evaluator:
             self.add_variable({"name": macro['param'][i], "value": sexpr_list[i + 1]}, new_ctx)
 
         # Call builtin or user defined function
+        self.ident += 2
         self.enter_context(new_ctx)
         # Clone macro code body as template for later code generation
         body = copy.deepcopy(macro['body'])
@@ -240,7 +262,6 @@ class Evaluator:
         return body[0]
 
     def call(self, func, lst):
-        self.ident += 2
         assert len(func['param']) == len(
             lst) - 1, f"Function {func['name']} expects {len(func['param'])} parameter but found {len(lst) - 1}"
         # Prologue, prepare arguments
@@ -249,6 +270,7 @@ class Evaluator:
             self.add_variable({"name": func['param'][i], "value": self.eval_list(lst[i + 1])}, new_ctx)
 
         # Call builtin or user defined function
+        self.ident += 2
         self.enter_context(new_ctx)
         body = func['body']
         if callable(body):
@@ -270,13 +292,11 @@ class Evaluator:
         self.eval_block(lst)
 
     def eval_block(self, lst):
-        self.ident += 2
         ret_val = None
         for i in range(len(lst)):
             var = self.eval_list(lst[i])
             if i == len(lst) - 1:
                 ret_val = var
-        self.ident -= 2
         return ret_val
 
     def eval_atom(self, atom):
@@ -392,18 +412,24 @@ class Evaluator:
                 val = self.call(func, lst)
                 self.trace_eval(lst, val)
                 return val
+
             macro = self.find_macro(action)
             if macro is not None:
                 raise RuntimeError(f"Macro {action} is not expanded!")
         raise RuntimeError(f'Unknown s-expression {lst}')
 
     def collect_macro(self, sexpr_list):
-        for idx, expr in enumerate(sexpr_list):
+        idx = 0
+        while idx < len(sexpr_list):
+            expr = sexpr_list[idx]
             if self.is_sexpr_list(expr) and len(expr) > 0:
                 if expr[0] == 'macro':
                     macro = {'name': expr[1], 'param': expr[2], 'body': expr[3:]}
                     self.add_macro(macro)
+                    print(f"Find macro definition {macro['name']}")
                     del sexpr_list[idx]
+                    continue
+            idx += 1
 
     def find_macro(self, name):
         for macro in self.macros:
