@@ -2,7 +2,13 @@
  (format "{}" a )
 )
 (concate "hello" "world")
-((lambda ( x y) (+ x y)) 2 3)
+(assert
+    (==
+        ((lambda ( x y) (+ x y)) 2 3)
+        5
+    )
+    "why not"
+)
 
 (let ((a 7) (b 2) c)
     (format "{}" a)
@@ -31,3 +37,10 @@
 (assert (<= 3 5) "yes")
 (assert (== (>=4 99) false) "yes")
 (assert (!= 3 5) "yes")
+
+(for (i 0) (< i 10) (+ i 1)
+    (block (format "{}" i)
+    (assert (< i 10) "why not")
+    )
+)
+(dotimes i 100 (format "{}" i))

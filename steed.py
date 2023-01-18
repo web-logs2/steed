@@ -16,32 +16,7 @@ import re
 import sys
 
 
-def steed_asert(ctx, args):
-    if not args['cond']:
-        raise RuntimeError(args['msg'])
-
-
-TheBuiltin = [
-    {'name': "format", 'param': ['fmt', "args"], 'body': lambda ctxs, args: print(args['fmt'].format(args['args']))},
-    {'name': "assert", 'param': ['cond', "msg"], 'body': lambda ctxs, args: steed_asert(ctxs, args)},
-    {'name': "+", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] + args['b']},
-    {'name': "-", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] - args['b']},
-    {'name': "*", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] * args['b']},
-    {'name': "/", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] / args['b']},
-    {'name': "&", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] % args['b']},
-    {'name': ">", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] > args['b']},
-    {'name': ">=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] >= args['b']},
-    {'name': "<", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] < args['b']},
-    {'name': "<=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] <= args['b']},
-    {'name': "!=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] != args['b']},
-    {'name': "==", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] == args['b']},
-    {'name': "and", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] and args['b']},
-    {'name': "or", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] or args['b']},
-    {'name': "not", 'param': ['a'], 'body': lambda ctxs, args: not args['a']},
-]
-
-
-class Transformer:
+class SyntaxParser:
     """
     convert source code to s-expressions and make s-expressions to python
     objects to facilitate further use
@@ -96,8 +71,7 @@ class Transformer:
     def check_syntax(self):
         invalid = [item.replace('Invalid-', '') for item in self.sexprs if 'Invalid-' in item]
         if len(invalid) > 0:
-            print("SyntaxError: Found invalid content " + str(invalid))
-            exit(-1)
+            raise RuntimeError("Found invalid content " + str(invalid))
 
     # i.e. ['(', '+', '1', '2', ')'] =-> [['+', '1', '2']]
     def to_py_list(self, i):
@@ -154,6 +128,31 @@ class Transformer:
         return self.sexprs
 
 
+def steed_asert(ctx, args):
+    if not args['cond']:
+        raise RuntimeError(args['msg'])
+
+
+TheBuiltin = [
+    {'name': "format", 'param': ['fmt', "args"], 'body': lambda ctxs, args: print(args['fmt'].format(args['args']))},
+    {'name': "assert", 'param': ['cond', "msg"], 'body': lambda ctxs, args: steed_asert(ctxs, args)},
+    {'name': "+", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] + args['b']},
+    {'name': "-", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] - args['b']},
+    {'name': "*", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] * args['b']},
+    {'name': "/", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] / args['b']},
+    {'name': "&", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] % args['b']},
+    {'name': ">", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] > args['b']},
+    {'name': ">=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] >= args['b']},
+    {'name': "<", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] < args['b']},
+    {'name': "<=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] <= args['b']},
+    {'name': "!=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] != args['b']},
+    {'name': "==", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] == args['b']},
+    {'name': "and", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] and args['b']},
+    {'name': "or", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] or args['b']},
+    {'name': "not", 'param': ['a'], 'body': lambda ctxs, args: not args['a']},
+]
+
+
 class Evaluator:
     """
     Logic of evaluator from practical common lisp book:
@@ -192,7 +191,8 @@ class Evaluator:
     def find_var(self, name):
         for var in self.contexts[-1]['var']:
             if var['name'] == name:
-                return var['value']
+                return var
+        return None
 
     def add_variable(self, var, ctx=None):
         if ctx is None:
@@ -300,18 +300,20 @@ class Evaluator:
         return ret_val
 
     def eval_atom(self, atom):
-        # If it's a self-evaluating atom
+        # "the string" or 3.14 or -5
         if re.match("\".*\"", atom) or re.match("-?[0-9][0-9.]*", atom):
             return eval(atom)
+        # true false
         elif atom == "true" or atom == "false":
             return eval(atom.title())
+        # identifier
         else:
             # Otherwise, it's a representation of variable
-            val = self.find_var(atom)
-            if val is not None:
-                return val
+            var = self.find_var(atom)
+            if var['value'] is not None:
+                return var['value']
 
-        raise RuntimeError(f'Unknown single s-expression {atom}')
+        raise RuntimeError(f'Unknown form {atom} during syntax parsing')
 
     def eval_list(self, lst):
         if not self.is_sexpr_list(lst):
@@ -366,6 +368,23 @@ class Evaluator:
                     val = self.eval_list(lst[3])
             self.trace_eval(lst, val)
             return val
+        elif action == 'for':
+            # (for (i 0) (< i 10) (+ i 1) (...))
+            init = lst[1]
+            cond = lst[2]
+            stride = lst[3]
+            body = lst[4]
+            new_ctx = self.new_context()
+            self.add_variable({'name': init[0], 'value': self.eval_list(init[1])}, new_ctx)
+
+            self.enter_context(new_ctx)
+            while self.eval_list(cond):
+                self.eval_list(body)
+                new_val = self.eval_list(stride)
+                self.find_var(init[0])['value'] = new_val
+            self.leave_context()
+            self.trace_eval(lst, None)
+            return None
         elif action == 'let':
             # (let ((a 11) (b 12) c) ...)
             var_bindings = lst[1]
@@ -404,8 +423,8 @@ class Evaluator:
             # (foo ...)
             var = self.find_var(action)
             if var is not None:
-                self.trace_eval(lst, var)
-                return var
+                self.trace_eval(lst, var['value'])
+                return var['value']
 
             func = self.find_func(action)
             if func is not None:
@@ -416,9 +435,11 @@ class Evaluator:
             macro = self.find_macro(action)
             if macro is not None:
                 raise RuntimeError(f"Macro {action} is not expanded!")
-        raise RuntimeError(f'Unknown s-expression {lst}')
+
+        raise RuntimeError(f'Unknown form {lst} during evaluation')
 
     def collect_macro(self, sexpr_list):
+        # (macro name ()...)
         idx = 0
         while idx < len(sexpr_list):
             expr = sexpr_list[idx]
@@ -459,7 +480,7 @@ class Evaluator:
 def generate_sexprs_from_file(path):
     with open(path) as file:
         content = file.read()
-        t = Transformer(content)
+        t = SyntaxParser(content)
         sexpr_list = t.make_sexpr_list()
         return sexpr_list
 
