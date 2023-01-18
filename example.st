@@ -25,8 +25,5 @@
 (format "{}" `(4 5))
 (format "{}" `(4 5 (7 8 ,(+ 6 4) ,120)))
 
-(macro when (cond body)
-    `(if ,cond (block ,body))
-)
 (format "{}" (when true (+1 2)) )
 (format "{}" (when false (+1 2)) )
