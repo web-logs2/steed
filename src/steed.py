@@ -159,6 +159,7 @@ TheBuiltin = [
     {'name': "and", 'param': ['a', "b"], 'body': lambda args: args['a'] and args['b']},
     {'name': "or", 'param': ['a', "b"], 'body': lambda args: args['a'] or args['b']},
     {'name': "not", 'param': ['a'], 'body': lambda args: not args['a']},
+    {'name': "eq", 'param': ['a', 'b'], 'body': lambda args: args['a'] == args['b']},
 ]
 
 
@@ -233,6 +234,7 @@ class Evaluator:
         print(f"== Eval {'list' if self.is_type_list(a) else 'atom'} {a} => {b}")
 
     def macro_call(self, macro, sexpr_list):
+        # Macros returns a form, not a value
         assert len(macro['param']) == len(sexpr_list) - 1, "parameter mismatched"
         # Prologue, prepare arguments
         new_ctx = self.new_context()
@@ -253,6 +255,7 @@ class Evaluator:
         return body[0]
 
     def call(self, func, lst):
+        # Functions return a value as expected
         assert len(func['param']) == len(lst) - 1, "parameter mismatched"
         # Prologue, prepare arguments
         new_ctx = self.new_context()
@@ -441,7 +444,7 @@ class Evaluator:
                 value += [self.eval_list(expr)]
             self.trace_eval(lst, value)
             return value
-        elif action == 'def':
+        elif action == 'defun':
             # (def name () ...)
             func = {'name': lst[1], 'param': lst[2], 'body': lst[3:]}
             self.add_func(func)
@@ -453,7 +456,7 @@ class Evaluator:
             self.add_func(func)
             self.trace_eval(lst, func)
             return func
-        elif action == 'macro':
+        elif action == 'defmacro':
             raise RuntimeError("Macro should be already collected and expanded")
         else:
             # (foo ...)
@@ -480,7 +483,7 @@ class Evaluator:
         while idx < len(sexpr_list):
             expr = sexpr_list[idx]
             if self.is_type_list(expr) and len(expr) > 0:
-                if expr[0] == 'macro':
+                if expr[0] == 'defmacro':
                     macro = {'name': expr[1], 'param': expr[2], 'body': expr[3:]}
                     self.add_macro(macro)
                     print(f"Find macro definition {macro['name']}")
