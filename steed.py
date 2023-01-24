@@ -16,20 +16,61 @@ import re
 import sys
 
 
+# Steed - a easy-to-use dialect of lisp
+#
+# A list can be a lot of things in Lisp. In the most general sense, a list
+# can be either a program or data. And because lists can themselves be made
+# of other lists, you can have arbitrary combinations of data and programs
+# mixed at different levels of list structure.
+#
+# Atoms are separated by whitespace or parentheses Now that you can recognize
+# a list, you'd like to have a name for the things that appear between the
+# parentheses the things that are not themselves lists, but rather words
+# and numbers. These things are called atoms.
 class SyntaxParser:
-    """
-    convert source code to s-expressions and make s-expressions to python
-    objects to facilitate further use
-
-    :param text: source code
-    :return: s-expression list
-    """
 
     def __init__(self, text):
         self.sexprs = []
         self.text = text
 
-    def atom(self, idx):
+    def syntax_check(self):
+        invalid = [item.replace('Invalid-', '') for item in self.sexprs if 'Invalid-' in item]
+        if len(invalid) > 0:
+            raise RuntimeError("Found invalid content " + str(invalid))
+
+    # i.e. ['(', '+', '1', '2', ')'] =-> [['+', '1', '2']]
+    def to_py_list(self, i):
+        assert self.sexprs[i] == '(', "Must start with ("
+        sub = []
+        k = i + 1
+        while k < len(self.sexprs):
+            if self.sexprs[k] == '(':
+                self.to_py_list(k)
+            if self.sexprs[k] != ')':
+                sub.append(self.sexprs[k])
+            else:
+                break
+            k += 1
+        assert self.sexprs[k] == ')', "Must start with )"
+        del self.sexprs[i:k]
+        self.sexprs[i] = sub
+
+    def surround_with_list(self, lst):
+        """
+        `(...) => [`, (...)] surround with list, note this should be unpacked
+         during evaluation time
+        """
+        k = 0
+        while k < len(lst):
+            if type(lst[k]) is list:
+                self.surround_with_list(lst[k])
+            elif lst[k] == "'" or lst[k] == '`' or lst[k] == ',':
+                sub = [lst[k], lst[k + 1]]
+                del lst[k:k + 1]
+                lst[k] = sub
+            k += 1
+
+    def make_atom(self, idx):
         def accept_if(i, cond):
             s = self.text[i]
             while i + 1 < len(self.text):
@@ -68,53 +109,16 @@ class SyntaxParser:
             return " ", idx + 1
         return "Invalid-" + self.text[idx], idx + 1
 
-    def check_syntax(self):
-        invalid = [item.replace('Invalid-', '') for item in self.sexprs if 'Invalid-' in item]
-        if len(invalid) > 0:
-            raise RuntimeError("Found invalid content " + str(invalid))
-
-    # i.e. ['(', '+', '1', '2', ')'] =-> [['+', '1', '2']]
-    def to_py_list(self, i):
-        assert self.sexprs[i] == '(', "Must start with ("
-        sub = []
-        k = i + 1
-        while k < len(self.sexprs):
-            if self.sexprs[k] == '(':
-                self.to_py_list(k)
-            if self.sexprs[k] != ')':
-                sub.append(self.sexprs[k])
-            else:
-                break
-            k += 1
-        assert self.sexprs[k] == ')', "Must start with )"
-        del self.sexprs[i:k]
-        self.sexprs[i] = sub
-
-    def surround_with_list(self, lst):
-        """
-        `(...) => [`, (...)] surround with list, note this should be unpacked
-         during evaluation time
-        """
-        k = 0
-        while k < len(lst):
-            if type(lst[k]) is list:
-                self.surround_with_list(lst[k])
-            elif lst[k] == "'" or lst[k] == '`' or lst[k] == ',':
-                sub = [lst[k], lst[k + 1]]
-                del lst[k:k + 1]
-                lst[k] = sub
-            k += 1
-
     def make_sexpr_list(self):
         self.text = self.text.replace('\n', '')
         # source code to s-expressions in a whole
         i = 0
         while i < len(self.text):
-            lexeme, ni = self.atom(i)
+            lexeme, ni = self.make_atom(i)
             i = ni
             if lexeme != ' ':
                 self.sexprs.append(lexeme)
-        self.check_syntax()
+        self.syntax_check()
 
         # process top-level s-expressions
         i = 0
@@ -128,54 +132,42 @@ class SyntaxParser:
         return self.sexprs
 
 
-def steed_asert(ctx, args):
+def steed_asert(args):
     if not args['cond']:
         raise RuntimeError(args['msg'])
 
 
 TheBuiltin = [
-    {'name': "format", 'param': ['fmt', "args"], 'body': lambda ctxs, args: print(args['fmt'].format(args['args']))},
-    {'name': "assert", 'param': ['cond', "msg"], 'body': lambda ctxs, args: steed_asert(ctxs, args)},
-    {'name': "+", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] + args['b']},
-    {'name': "-", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] - args['b']},
-    {'name': "*", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] * args['b']},
-    {'name': "/", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] / args['b']},
-    {'name': "&", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] % args['b']},
-    {'name': ">", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] > args['b']},
-    {'name': ">=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] >= args['b']},
-    {'name': "<", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] < args['b']},
-    {'name': "<=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] <= args['b']},
-    {'name': "!=", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] != args['b']},
-    {'name': "==", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] == args['b']},
-    {'name': "and", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] and args['b']},
-    {'name': "or", 'param': ['a', "b"], 'body': lambda ctxs, args: args['a'] or args['b']},
-    {'name': "not", 'param': ['a'], 'body': lambda ctxs, args: not args['a']},
+    {'name': "format", 'param': ['fmt', "args"], 'body': lambda args: print(args['fmt'].format(args['args']))},
+    {'name': "assert", 'param': ['cond', "msg"], 'body': lambda args: steed_asert(args)},
+    {'name': "+", 'param': ['a', "b"], 'body': lambda args: args['a'] + args['b']},
+    {'name': "-", 'param': ['a', "b"], 'body': lambda args: args['a'] - args['b']},
+    {'name': "*", 'param': ['a', "b"], 'body': lambda args: args['a'] * args['b']},
+    {'name': "/", 'param': ['a', "b"], 'body': lambda args: args['a'] / args['b']},
+    {'name': "&", 'param': ['a', "b"], 'body': lambda args: args['a'] % args['b']},
+    {'name': ">", 'param': ['a', "b"], 'body': lambda args: args['a'] > args['b']},
+    {'name': ">=", 'param': ['a', "b"], 'body': lambda args: args['a'] >= args['b']},
+    {'name': "<", 'param': ['a', "b"], 'body': lambda args: args['a'] < args['b']},
+    {'name': "<=", 'param': ['a', "b"], 'body': lambda args: args['a'] <= args['b']},
+    {'name': "!=", 'param': ['a', "b"], 'body': lambda args: args['a'] != args['b']},
+    {'name': "==", 'param': ['a', "b"], 'body': lambda args: args['a'] == args['b']},
+    {'name': "and", 'param': ['a', "b"], 'body': lambda args: args['a'] and args['b']},
+    {'name': "or", 'param': ['a', "b"], 'body': lambda args: args['a'] or args['b']},
+    {'name': "not", 'param': ['a'], 'body': lambda args: not args['a']},
 ]
 
 
+# A form can be either an atom or a list. The important thing is that the form is
+# meant to be evaluated.
+#
+# Evaluation is simple if the form is an atom. Lisp treats the atom as a name, and
+# retrieves the value for the name (if a value exists)
+# If a form is a list, then the first element must be either a symbol or a special
+# form called a lambda expression. The symbol must name a function. In Lisp, the
+# symbols +, -, *, and / name the four common arithmetic operations: addition,
+# subtraction, multiplication, and division. Each of these symbols has an associated
+# function that performs the arithmetic operation.
 class Evaluator:
-    """
-    Logic of evaluator from practical common lisp book:
-
-    The simplest Lisp forms, atoms, can be divided into two categories: symbols and everything else.
-    A symbol, evaluated as a form, is considered the name of a variable and evaluates to the current
-    value of the variable.11 I'll discuss in Chapter 6 how variables get their values in the first place.
-    You should also note that certain "variables" are that old oxymoron of programming: "constant
-    variables." For instance, the symbol PI names a constant variable whose value is the best possible
-    floating-point approximation to the mathematical constant pi.
-
-    All other atoms--numbers and strings are the kinds you've seen so far--are self-evaluating objects.
-    This means when such an expression is passed to the notional evaluation function, it's simply returned.
-
-    Things get more interesting when we consider how lists are evaluated. All legal list forms start with
-    a symbol, but three kinds of list forms are evaluated in three quite different ways. To determine what
-    kind of form a given list is, the evaluator must determine whether the symbol that starts the list is
-    the name of a function, a macro, or a special operator. If the symbol hasn't been defined yet--as may
-    be the case if you're compiling code that contains references to functions that will be defined
-    later--it's assumed to be a function name. I'll refer to the three kinds of forms as function call
-    forms, macro forms, and special forms.
-    """
-
     def __init__(self):
         self.contexts = [{"func": [func for func in TheBuiltin], "var": []}]
         self.macros = []
@@ -221,14 +213,14 @@ class Evaluator:
     def leave_context(self):
         del self.contexts[-1]
 
-    def allow_evaluation(self, lst):
+    def allow_eval(self, lst):
         """
         [, (...)] => (...)
         """
         i = 0
         while i < len(lst):
             if self.is_sexpr_list(lst[i]):
-                self.allow_evaluation(lst[i])
+                self.allow_eval(lst[i])
             elif lst[i] == ',':
                 next_value = self.eval_list(lst[i + 1])
                 del lst[i:i + 1]
@@ -238,7 +230,7 @@ class Evaluator:
     def trace_eval(self, a, b):
         print(f"{'..' * self.ident} {a} => {b}")
 
-    def expand_macro_call(self, macro, sexpr_list):
+    def macro_call(self, macro, sexpr_list):
         assert len(macro['param']) == len(
             sexpr_list) - 1, f"Macro {macro['name']} expects {len(macro['param'])} parameter but found {len(sexpr_list) - 1}"
         # Prologue, prepare arguments
@@ -277,7 +269,7 @@ class Evaluator:
             args = {}
             for item in new_ctx['var']:
                 args[item['name']] = item['value']
-            ret_val = body(self.contexts, args)
+            ret_val = body(args)
         else:
             ret_val = self.eval_block(body)
         self.leave_context()
@@ -348,7 +340,7 @@ class Evaluator:
         elif action == '`':
             # `((+ 1 2) ,(+1 2))
             ret_val = lst[1]
-            self.allow_evaluation(ret_val)
+            self.allow_eval(ret_val)
             self.trace_eval(lst, ret_val)
             return ret_val
         elif action == 'block':
@@ -405,6 +397,16 @@ class Evaluator:
             self.leave_context()
             self.trace_eval(lst, ret_val)
             return ret_val
+        elif action == 'setq':
+            # (setq name "Zhao")
+            exprs = lst[1:]
+            if len(exprs) % 2 != 0:
+                raise RuntimeError("expect even number of arguments")
+            for i in range(0, len(exprs), 2):
+                symbol = exprs[i]
+                value = self.eval_list(exprs[i + 1])
+                self.add_variable({'name': symbol, 'value': value})
+            return None
         elif action == 'def':
             # (def name () ...)
             func = {'name': lst[1], 'param': lst[2], 'body': lst[3:]}
@@ -467,7 +469,7 @@ class Evaluator:
                     macro = self.find_macro(sexpr[0])
                     if macro is not None:
                         assert len(sexpr[1:]) == len(macro['param']), "num of macro parameters mismatched"
-                        expanded = self.expand_macro_call(macro, sexpr)
+                        expanded = self.macro_call(macro, sexpr)
                         sexpr_list[idx] = expanded
                         continue
                 self.expand_macro(sexpr)
