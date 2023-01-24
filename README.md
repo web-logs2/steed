@@ -4,6 +4,10 @@ and some old memories from SICP. All of these make up my impression on Lisp.
 The main reference manual is Successful Lisp, which contains core design and core concepts of Lisp, I will re-design and implement the parts that do not suit my taste.
 
 ## Syntax
+#### **Comments**
+```
+;; Happy 2023 Chinese New Year~
+```
 #### **Symbol** 
 `1 3.4 -6 foo bar`
 #### **Lambda** 

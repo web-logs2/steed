@@ -37,7 +37,7 @@ class SyntaxParser:
     def syntax_check(self):
         for item in self.sexprs:
             if type(item) is str and 'Invalid-' in item:
-                raise RuntimeError(f"Found invalid content {item}")
+                raise RuntimeError(f"Syntax error at {item}")
 
     def to_py_list(self, i):
         # i.e. ['(', '+', '1', '2', ')'] =-> [['+', '1', '2']]
@@ -115,7 +115,11 @@ class SyntaxParser:
         return "Invalid-" + self.text[idx], idx + 1
 
     def make_sexpr_list(self):
-        self.text = self.text.replace('\n', '')
+        # remove comment lines
+        lines = self.text.split("\n")
+        lines = [s for s in lines if not s.startswith(";;")]
+        self.text = ' '.join(lines)
+        self.text = self.text.replace('\n', ' ')
         # source code to s-expressions in a whole
         i = 0
         while i < len(self.text):
