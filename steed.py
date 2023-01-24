@@ -219,7 +219,7 @@ class Evaluator:
         """
         i = 0
         while i < len(lst):
-            if self.is_sexpr_list(lst[i]):
+            if self.is_type_list(lst[i]):
                 self.allow_eval(lst[i])
             elif lst[i] == ',':
                 next_value = self.eval_list(lst[i + 1])
@@ -228,11 +228,10 @@ class Evaluator:
             i += 1
 
     def trace_eval(self, a, b):
-        print(f"{'..' * self.ident} {a} => {b}")
+        print(f"{'..' * self.ident}== Eval {'list' if self.is_type_list(a) else 'atom'} {a} => {b}")
 
     def macro_call(self, macro, sexpr_list):
-        assert len(macro['param']) == len(
-            sexpr_list) - 1, f"Macro {macro['name']} expects {len(macro['param'])} parameter but found {len(sexpr_list) - 1}"
+        assert len(macro['param']) == len(sexpr_list) - 1, "parameter mismatched"
         # Prologue, prepare arguments
         new_ctx = self.new_context()
         for i in range(0, len(macro['param'])):
@@ -254,8 +253,7 @@ class Evaluator:
         return body[0]
 
     def call(self, func, lst):
-        assert len(func['param']) == len(
-            lst) - 1, f"Function {func['name']} expects {len(func['param'])} parameter but found {len(lst) - 1}"
+        assert len(func['param']) == len(lst) - 1, "parameter mismatched"
         # Prologue, prepare arguments
         new_ctx = self.new_context()
         for i in range(0, len(func['param'])):
@@ -298,6 +296,8 @@ class Evaluator:
         # true false
         elif atom == "true" or atom == "false":
             return eval(atom.title())
+        elif atom == 'nil':
+            return None
         # identifier
         else:
             # Otherwise, it's a representation of variable
@@ -308,17 +308,19 @@ class Evaluator:
         raise RuntimeError(f'Unknown form {atom} during syntax parsing')
 
     def eval_list(self, lst):
-        if not self.is_sexpr_list(lst):
+        if not self.is_type_list(lst):
             val = self.eval_atom(lst)
             self.trace_eval(lst, val)
             return val
 
+        # () is evaluated to nil, which is equivalent to "None"
+        # in our implementation
         if len(lst) == 0:
             self.trace_eval(lst, None)
             return None
 
         action = lst[0]
-        if self.is_sexpr_list(action):
+        if self.is_type_list(action):
             # (<func> ...)
             action = self.eval_list(action)
             lst[0] = action
@@ -382,7 +384,7 @@ class Evaluator:
             var_bindings = lst[1]
             new_ctx = self.new_context()
             for var_binding in var_bindings:
-                if self.is_sexpr_list(var_binding):
+                if self.is_type_list(var_binding):
                     assert len(var_binding) == 2, "must be initialization of var binding"
                     name = var_binding[0]
                     value = self.eval_list(var_binding[1])
@@ -406,7 +408,41 @@ class Evaluator:
                 symbol = exprs[i]
                 value = self.eval_list(exprs[i + 1])
                 self.add_variable({'name': symbol, 'value': value})
+            self.trace_eval(lst, None)
             return None
+        elif action == 'cons':
+            # (cons 1 (cons 2 (cons 3 nil)))
+            first = self.eval_list(lst[1])
+            second = self.eval_list(lst[2])
+            value = [first]
+            if second is not None:
+                value += second
+            self.trace_eval(lst, value)
+            return value
+        elif action == 'first':
+            # (first '(1 2 4 5 6))
+            value = self.eval_list(lst[1])
+            if not self.is_type_list(value):
+                raise RuntimeError("Expect an list as its argument")
+            value = value[0]
+            self.trace_eval(lst, value)
+            return value
+        elif action == 'rest':
+            # (rest '(1 2 4 5 6))
+            value = self.eval_list(lst[1])
+            if not self.is_type_list(value):
+                raise RuntimeError("Expect an list as its argument")
+            value = value[1:]
+            self.trace_eval(lst, value)
+            return value
+
+        elif action == 'list':
+            # (list 1 2 3)
+            value = []
+            for expr in lst[1:]:
+                value += [self.eval_list(expr)]
+            self.trace_eval(lst, value)
+            return value
         elif action == 'def':
             # (def name () ...)
             func = {'name': lst[1], 'param': lst[2], 'body': lst[3:]}
@@ -445,7 +481,7 @@ class Evaluator:
         idx = 0
         while idx < len(sexpr_list):
             expr = sexpr_list[idx]
-            if self.is_sexpr_list(expr) and len(expr) > 0:
+            if self.is_type_list(expr) and len(expr) > 0:
                 if expr[0] == 'macro':
                     macro = {'name': expr[1], 'param': expr[2], 'body': expr[3:]}
                     self.add_macro(macro)
@@ -461,10 +497,10 @@ class Evaluator:
         return None
 
     def expand_macro(self, sexpr_list):
-        if not self.is_sexpr_list(sexpr_list):
+        if not self.is_type_list(sexpr_list):
             return None
         for idx, sexpr in enumerate(sexpr_list):
-            if self.is_sexpr_list(sexpr) and len(sexpr) > 0:
+            if self.is_type_list(sexpr) and len(sexpr) > 0:
                 if type(sexpr[0]) is str:
                     macro = self.find_macro(sexpr[0])
                     if macro is not None:
@@ -475,7 +511,7 @@ class Evaluator:
                 self.expand_macro(sexpr)
 
     @staticmethod
-    def is_sexpr_list(a):
+    def is_type_list(a):
         return type(a) is list
 
 
