@@ -12,6 +12,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>
 import copy
+import os
 import re
 import sys
 
@@ -34,12 +35,12 @@ class SyntaxParser:
         self.text = text
 
     def syntax_check(self):
-        invalid = [item.replace('Invalid-', '') for item in self.sexprs if 'Invalid-' in item]
-        if len(invalid) > 0:
-            raise RuntimeError("Found invalid content " + str(invalid))
+        for item in self.sexprs:
+            if type(item) is str and 'Invalid-' in item:
+                raise RuntimeError(f"Found invalid content {item}")
 
-    # i.e. ['(', '+', '1', '2', ')'] =-> [['+', '1', '2']]
     def to_py_list(self, i):
+        # i.e. ['(', '+', '1', '2', ')'] =-> [['+', '1', '2']]
         assert self.sexprs[i] == '(', "Must start with ("
         sub = []
         k = i + 1
@@ -56,10 +57,8 @@ class SyntaxParser:
         self.sexprs[i] = sub
 
     def surround_with_list(self, lst):
-        """
-        `(...) => [`, (...)] surround with list, note this should be unpacked
-         during evaluation time
-        """
+        # `(...) => [`, (...)] surround with list, note this should be unpacked
+        # during evaluation time
         k = 0
         while k < len(lst):
             if type(lst[k]) is list:
@@ -84,7 +83,12 @@ class SyntaxParser:
 
         if self.text[idx].isalpha():
             # identifiers
-            return accept_if(idx, lambda c: ('a' <= c <= 'z') or ('A' <= c <= 'Z') or c == '-')
+            s, i = accept_if(idx, lambda c: ('a' <= c <= 'z') or ('A' <= c <= 'Z') or c == '-')
+            if s == 'true' or s == 'false':
+                return eval(s.title()), i
+            elif s == 'nil':
+                return None, i
+            return s, i
         elif self.text[idx] in '()+*/%\'`,':
             # operators
             return self.text[idx], idx + 1
@@ -104,7 +108,8 @@ class SyntaxParser:
                 if idx + 1 < len(self.text) and (not self.text[idx + 1].isnumeric()):
                     return "-", idx + 1
             # 3.14, -3
-            return accept_if(idx, lambda c: c.isnumeric() or c == '.')
+            s, i = accept_if(idx, lambda c: c.isnumeric() or c == '.')
+            return eval(s), i
         elif self.text[idx] == ' ':
             return " ", idx + 1
         return "Invalid-" + self.text[idx], idx + 1
@@ -171,7 +176,6 @@ class Evaluator:
     def __init__(self):
         self.contexts = [{"func": [func for func in TheBuiltin], "var": []}]
         self.macros = []
-        self.ident = 0
 
     def find_func(self, name):
         for i in reversed(range(len(self.contexts))):
@@ -214,9 +218,7 @@ class Evaluator:
         del self.contexts[-1]
 
     def allow_eval(self, lst):
-        """
-        [, (...)] => (...)
-        """
+        # [, (...)] => (...)
         i = 0
         while i < len(lst):
             if self.is_type_list(lst[i]):
@@ -228,7 +230,7 @@ class Evaluator:
             i += 1
 
     def trace_eval(self, a, b):
-        print(f"{'..' * self.ident}== Eval {'list' if self.is_type_list(a) else 'atom'} {a} => {b}")
+        print(f"== Eval {'list' if self.is_type_list(a) else 'atom'} {a} => {b}")
 
     def macro_call(self, macro, sexpr_list):
         assert len(macro['param']) == len(sexpr_list) - 1, "parameter mismatched"
@@ -239,7 +241,6 @@ class Evaluator:
             self.add_variable({"name": macro['param'][i], "value": sexpr_list[i + 1]}, new_ctx)
 
         # Call builtin or user defined function
-        self.ident += 2
         self.enter_context(new_ctx)
         # Clone macro code body as template for later code generation
         body = copy.deepcopy(macro['body'])
@@ -249,7 +250,6 @@ class Evaluator:
             body[i] = val
         self.leave_context()
         # TODO: revise this later
-        self.ident -= 2
         return body[0]
 
     def call(self, func, lst):
@@ -260,7 +260,6 @@ class Evaluator:
             self.add_variable({"name": func['param'][i], "value": self.eval_list(lst[i + 1])}, new_ctx)
 
         # Call builtin or user defined function
-        self.ident += 2
         self.enter_context(new_ctx)
         body = func['body']
         if callable(body):
@@ -271,7 +270,6 @@ class Evaluator:
         else:
             ret_val = self.eval_block(body)
         self.leave_context()
-        self.ident -= 2
         return ret_val
 
     def eval_top_level(self, lst):
@@ -290,14 +288,14 @@ class Evaluator:
         return ret_val
 
     def eval_atom(self, atom):
-        # "the string" or 3.14 or -5
-        if re.match("\".*\"", atom) or re.match("-?[0-9][0-9.]*", atom):
+        # Self-evaluating atom, e.g. true, 3.14, -5, nil
+        if atom is str or type(atom) is int or type(atom) is float or \
+                type(atom) is bool or atom is None:
+            return atom
+        # Special case, we need to distinguish "foo"(string) and foo(symbol)
+        # even if "foo" is self-evaluating atom
+        elif re.match('".*?"', atom):
             return eval(atom)
-        # true false
-        elif atom == "true" or atom == "false":
-            return eval(atom.title())
-        elif atom == 'nil':
-            return None
         # identifier
         else:
             # Otherwise, it's a representation of variable
@@ -527,7 +525,7 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("No source file")
         exit(-1)
-    lst_stdlib = generate_sexprs_from_file("stdlib.st")
+    lst_stdlib = generate_sexprs_from_file(os.getcwd() + "/src/stdlib.st")
     lst_source = generate_sexprs_from_file(sys.argv[1])
     e = Evaluator()
     e.eval_top_level(lst_stdlib)

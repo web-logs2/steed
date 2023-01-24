@@ -83,3 +83,6 @@
 (rest (rest (rest my-list)))
 (first (rest (rest (rest my-list))))
 (assert (== (first (list 4 2 3)) 4 ) "why not")
+(assert (== (rest (list 4 2 3)) '(2 3 )) "why not")
+(assert (== (rest (list 4 2 3)) (quote(2 3 ))) "why not")
+(assert (== (rest (list 4 2 3)) (list 2 3 )) "why not")
