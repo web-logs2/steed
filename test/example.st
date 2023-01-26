@@ -98,3 +98,7 @@
  (format "{}" a)
 (cons 1 '(2 3))
 (rcons '(2 3) 4)
+; test comment
+(/ 15.0 2) ;test comment
+(* 3 9)     ; test comment
+(/ 1 3)

@@ -16,8 +16,7 @@ import os
 import re
 import sys
 
-
-# Steed - a easy-to-use dialect of lisp
+# Steed - an easy-to-use dialect of lisp
 #
 # A list can be a lot of things in Lisp. In the most general sense, a list
 # can be either a program or data. And because lists can themselves be made
@@ -28,33 +27,50 @@ import sys
 # a list, you'd like to have a name for the things that appear between the
 # parentheses the things that are not themselves lists, but rather words
 # and numbers. These things are called atoms.
+enable_debug = False
+
+
 class SyntaxParser:
 
     def __init__(self, text):
-        self.sexprs = []
+        self.forms = []
         self.text = text
 
+    @staticmethod
+    def parse_file(file_path):
+        with open(file_path) as file:
+            content = file.read()
+            t = SyntaxParser(content)
+            sexpr_list = t.make_form_list()
+            return sexpr_list
+
+    @staticmethod
+    def parse_text(content):
+        t = SyntaxParser(content)
+        sexpr_list = t.make_form_list()
+        return sexpr_list
+
     def syntax_check(self):
-        for item in self.sexprs:
+        for item in self.forms:
             if type(item) is str and 'Invalid-' in item:
                 raise RuntimeError(f"Syntax error at {item}")
 
     def to_py_list(self, i):
         # i.e. ['(', '+', '1', '2', ')'] =-> [['+', '1', '2']]
-        assert self.sexprs[i] == '(', "Must start with ("
+        assert self.forms[i] == '(', "Must start with ("
         sub = []
         k = i + 1
-        while k < len(self.sexprs):
-            if self.sexprs[k] == '(':
+        while k < len(self.forms):
+            if self.forms[k] == '(':
                 self.to_py_list(k)
-            if self.sexprs[k] != ')':
-                sub.append(self.sexprs[k])
+            if self.forms[k] != ')':
+                sub.append(self.forms[k])
             else:
                 break
             k += 1
-        assert self.sexprs[k] == ')', "Must start with )"
-        del self.sexprs[i:k]
-        self.sexprs[i] = sub
+        assert self.forms[k] == ')', "Must start with )"
+        del self.forms[i:k]
+        self.forms[i] = sub
 
     def surround_with_list(self, lst):
         # `(...) => [`, (...)] surround with list, note this should be unpacked
@@ -68,6 +84,13 @@ class SyntaxParser:
                 del lst[k:k + 1]
                 lst[k] = sub
             k += 1
+
+    def remove_comments(self):
+        lines = self.text.split("\n")
+        lines = [s for s in lines if not s.strip().startswith(";")]
+        lines = [re.sub(r';.*', '', s) for s in lines]
+        self.text = ' '.join(lines)
+        self.text = self.text.replace('\n', ' ')
 
     def make_atom(self, idx):
         def accept_if(i, cond):
@@ -114,31 +137,29 @@ class SyntaxParser:
             return " ", idx + 1
         return "Invalid-" + self.text[idx], idx + 1
 
-    def make_sexpr_list(self):
+    def make_form_list(self):
         # remove comment lines
-        lines = self.text.split("\n")
-        lines = [s for s in lines if not s.startswith(";;")]
-        self.text = ' '.join(lines)
-        self.text = self.text.replace('\n', ' ')
+        self.remove_comments()
+
         # source code to s-expressions in a whole
         i = 0
         while i < len(self.text):
             lexeme, ni = self.make_atom(i)
             i = ni
             if lexeme != ' ':
-                self.sexprs.append(lexeme)
+                self.forms.append(lexeme)
         self.syntax_check()
 
         # process top-level s-expressions
         i = 0
-        while i < len(self.sexprs):
-            if self.sexprs[i] == '(':
+        while i < len(self.forms):
+            if self.forms[i] == '(':
                 self.to_py_list(i)
             i += 1
 
-        self.surround_with_list(self.sexprs)
+        self.surround_with_list(self.forms)
 
-        return self.sexprs
+        return self.forms
 
 
 def steed_asert(args):
@@ -229,13 +250,14 @@ class Evaluator:
             if self.is_type_list(lst[i]):
                 self.allow_eval(lst[i])
             elif lst[i] == ',':
-                next_value = self.eval_list(lst[i + 1])
+                next_value = self.eval_form(lst[i + 1])
                 del lst[i:i + 1]
                 lst[i] = next_value
             i += 1
 
     def trace_eval(self, a, b):
-        print(f"== Eval {'list' if self.is_type_list(a) else 'atom'} {a} => {b}")
+        if enable_debug:
+            print(f"== Eval {'list' if self.is_type_list(a) else 'atom'} {a} => {b}")
 
     def macro_call(self, macro, sexpr_list):
         # Macros returns a form, not a value
@@ -251,7 +273,7 @@ class Evaluator:
         # Clone macro code body as template for later code generation
         body = copy.deepcopy(macro['body'])
         for i, expr in enumerate(body):
-            val = self.eval_list(expr)
+            val = self.eval_form(expr)
             # Replace macro body with evaluated value
             body[i] = val
         self.leave_context()
@@ -264,7 +286,7 @@ class Evaluator:
         # Prologue, prepare arguments
         new_ctx = self.new_context()
         for i in range(0, len(func['param'])):
-            self.add_variable({"name": func['param'][i], "value": self.eval_list(lst[i + 1])}, new_ctx)
+            self.add_variable({"name": func['param'][i], "value": self.eval_form(lst[i + 1])}, new_ctx)
 
         # Call builtin or user defined function
         self.enter_context(new_ctx)
@@ -280,16 +302,18 @@ class Evaluator:
         return ret_val
 
     def eval_top_level(self, lst):
-        print(f"Initial S-expression{lst}")
+        if enable_debug:
+            print(f"Initial S-expression{lst}")
         self.collect_macro(lst)
         self.expand_macro(lst)
-        print(f"Macro Expanded{lst}")
+        if enable_debug:
+            print(f"Macro Expanded{lst}")
         self.eval_block(lst)
 
     def eval_block(self, lst):
         ret_val = None
         for i in range(len(lst)):
-            var = self.eval_list(lst[i])
+            var = self.eval_form(lst[i])
             if i == len(lst) - 1:
                 ret_val = var
         return ret_val
@@ -312,7 +336,7 @@ class Evaluator:
 
         raise RuntimeError(f'Unknown form {atom} during syntax parsing')
 
-    def eval_list(self, lst):
+    def eval_form(self, lst):
         if not self.is_type_list(lst):
             val = self.eval_atom(lst)
             self.trace_eval(lst, val)
@@ -327,7 +351,7 @@ class Evaluator:
         action = lst[0]
         if self.is_type_list(action):
             # (<func> ...)
-            action = self.eval_list(action)
+            action = self.eval_form(action)
             lst[0] = action
 
         if "body" in action:
@@ -358,13 +382,13 @@ class Evaluator:
             return ret_val
         elif action == 'if':
             # (if cond (then-block) (else-block)? )
-            cond = self.eval_list(lst[1])
+            cond = self.eval_form(lst[1])
             val = None
             if cond:
-                val = self.eval_list(lst[2])
+                val = self.eval_form(lst[2])
             else:
                 if len(lst) == 4:
-                    val = self.eval_list(lst[3])
+                    val = self.eval_form(lst[3])
             self.trace_eval(lst, val)
             return val
         elif action == 'for':
@@ -374,12 +398,12 @@ class Evaluator:
             stride = lst[3]
             body = lst[4]
             new_ctx = self.new_context()
-            self.add_variable({'name': init[0], 'value': self.eval_list(init[1])}, new_ctx)
+            self.add_variable({'name': init[0], 'value': self.eval_form(init[1])}, new_ctx)
 
             self.enter_context(new_ctx)
-            while self.eval_list(cond):
-                self.eval_list(body)
-                new_val = self.eval_list(stride)
+            while self.eval_form(cond):
+                self.eval_form(body)
+                new_val = self.eval_form(stride)
                 self.find_var(init[0])['value'] = new_val
             self.leave_context()
             self.trace_eval(lst, None)
@@ -392,7 +416,7 @@ class Evaluator:
                 if self.is_type_list(var_binding):
                     assert len(var_binding) == 2, "must be initialization of var binding"
                     name = var_binding[0]
-                    value = self.eval_list(var_binding[1])
+                    value = self.eval_form(var_binding[1])
                     self.add_variable({"name": name, "value": value}, new_ctx)
                 else:
                     assert len(var_binding) == 1, "must be default initialization of var binding"
@@ -411,14 +435,14 @@ class Evaluator:
                 raise RuntimeError("expect even number of arguments")
             for i in range(0, len(exprs), 2):
                 symbol = exprs[i]
-                value = self.eval_list(exprs[i + 1])
+                value = self.eval_form(exprs[i + 1])
                 self.add_variable({'name': symbol, 'value': value})
             self.trace_eval(lst, None)
             return None
         elif action == 'cons':
             # (cons 1 (cons 2 (cons 3 nil)))
-            first = self.eval_list(lst[1])
-            second = self.eval_list(lst[2])
+            first = self.eval_form(lst[1])
+            second = self.eval_form(lst[2])
             value = [first]
             if second is not None:
                 value += second
@@ -426,7 +450,7 @@ class Evaluator:
             return value
         elif action == 'first':
             # (first '(1 2 4 5 6))
-            value = self.eval_list(lst[1])
+            value = self.eval_form(lst[1])
             if not self.is_type_list(value):
                 raise RuntimeError("Expect an list as its argument")
             value = value[0]
@@ -434,7 +458,7 @@ class Evaluator:
             return value
         elif action == 'rest':
             # (rest '(1 2 4 5 6))
-            value = self.eval_list(lst[1])
+            value = self.eval_form(lst[1])
             if not self.is_type_list(value):
                 raise RuntimeError("Expect an list as its argument")
             value = value[1:]
@@ -445,7 +469,7 @@ class Evaluator:
             # (list 1 2 3)
             value = []
             for expr in lst[1:]:
-                value += [self.eval_list(expr)]
+                value += [self.eval_form(expr)]
             self.trace_eval(lst, value)
             return value
         elif action == 'defun':
@@ -490,7 +514,8 @@ class Evaluator:
                 if expr[0] == 'defmacro':
                     macro = {'name': expr[1], 'param': expr[2], 'body': expr[3:]}
                     self.add_macro(macro)
-                    print(f"Find macro definition {macro['name']}")
+                    if enable_debug:
+                        print(f"Find macro definition {macro['name']}")
                     del sexpr_list[idx]
                     continue
             idx += 1
@@ -520,20 +545,21 @@ class Evaluator:
         return type(a) is list
 
 
-def generate_sexprs_from_file(path):
-    with open(path) as file:
-        content = file.read()
-        t = SyntaxParser(content)
-        sexpr_list = t.make_sexpr_list()
-        return sexpr_list
-
-
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("No source file")
         exit(-1)
-    lst_stdlib = generate_sexprs_from_file(os.getcwd() + "/src/stdlib.st")
-    lst_source = generate_sexprs_from_file(sys.argv[1])
+
+    script_name = ""
+    for arg in sys.argv:
+        if arg == '--debug':
+            enable_debug = True
+        elif arg.endswith('.st'):
+            script_name = arg
+
+    src_dir = os.path.dirname(os.path.realpath(__file__))
+    lst_stdlib = SyntaxParser.parse_file(src_dir + "/stdlib.st")
+    lst_source = SyntaxParser.parse_file(script_name)
     e = Evaluator()
     e.eval_top_level(lst_stdlib)
     e.eval_top_level(lst_source)
