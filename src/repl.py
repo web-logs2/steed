@@ -30,5 +30,3 @@ while True:
         print(val)
     except RuntimeError as ex:
         print(f"RuntimeError: {ex}")
-
-

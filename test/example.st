@@ -102,3 +102,4 @@
 (/ 15.0 2) ;test comment
 (* 3 9)     ; test comment
 (/ 1 3)
+(when true (format "{}" "when macro"))

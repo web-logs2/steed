@@ -28,6 +28,7 @@ import sys
 # parentheses the things that are not themselves lists, but rather words
 # and numbers. These things are called atoms.
 ENABLE_DEBUG = False
+INVALID_ATOM_PREFIX = "Invalid-"
 
 
 class SyntaxParser:
@@ -52,12 +53,13 @@ class SyntaxParser:
 
     def syntax_check(self):
         for item in self.forms:
-            if type(item) is str and 'Invalid-' in item:
+            if type(item) is str and INVALID_ATOM_PREFIX in item:
                 raise RuntimeError(f"Syntax error at {item}")
 
     def to_py_list(self, i):
         # i.e. ['(', '+', '1', '2', ')'] =-> [['+', '1', '2']]
-        assert self.forms[i] == '(', "Must start with ("
+        if self.forms[i] != '(':
+            raise RuntimeError("Must start with (")
         sub = []
         k = i + 1
         while k < len(self.forms):
@@ -68,17 +70,18 @@ class SyntaxParser:
             else:
                 break
             k += 1
-        assert self.forms[k] == ')', "Must start with )"
+        if self.forms[k] != ')':
+            raise RuntimeError("Must end with )")
         del self.forms[i:k]
         self.forms[i] = sub
 
-    def surround_with_list(self, lst):
+    def process_quote(self, lst):
         # `(...) => [`, (...)] surround with list, note this should be unpacked
         # during evaluation time
         k = 0
         while k < len(lst):
             if type(lst[k]) is list:
-                self.surround_with_list(lst[k])
+                self.process_quote(lst[k])
             elif lst[k] == "'" or lst[k] == '`' or lst[k] == ',':
                 sub = [lst[k], lst[k + 1]]
                 del lst[k:k + 1]
@@ -135,13 +138,13 @@ class SyntaxParser:
             return eval(s), i
         elif self.text[idx] == ' ':
             return " ", idx + 1
-        return "Invalid-" + self.text[idx], idx + 1
+        return INVALID_ATOM_PREFIX + self.text[idx], idx + 1
 
     def make_form_list(self):
         # remove comment lines
         self.remove_comments()
 
-        # source code to s-expressions in a whole
+        # source code to forms in a whole
         i = 0
         while i < len(self.text):
             lexeme, ni = self.make_atom(i)
@@ -150,14 +153,15 @@ class SyntaxParser:
                 self.forms.append(lexeme)
         self.syntax_check()
 
-        # process top-level s-expressions
+        # process top-level forms
         i = 0
         while i < len(self.forms):
             if self.forms[i] == '(':
                 self.to_py_list(i)
             i += 1
 
-        self.surround_with_list(self.forms)
+        # process quote after py-list was generated
+        self.process_quote(self.forms)
 
         return self.forms
 
@@ -187,6 +191,7 @@ TheBuiltin = [
     {'name': "eq", 'param': ['a', 'b'], 'body': lambda args: args['a'] == args['b']},
 ]
 
+
 class Context:
     def __init__(self):
         self.contexts = [{"func": [func for func in TheBuiltin], "var": []}]
@@ -205,19 +210,23 @@ class Context:
                 return var
         return None
 
-    def add_variable(self, var, ctx=None):
+    def add_var(self, name, value, ctx=None):
+        var = {"name": name, "value": value}
         if ctx is None:
             self.contexts[-1]['var'].append(var)
         else:
             ctx['var'].append(var)
 
-    def add_func(self, func, ctx=None):
+    def add_func(self, name, param, body, ctx=None):
+        func = {'name': name, 'param': param, 'body': body}
         if ctx is None:
             self.contexts[-1]['func'].append(func)
         else:
             ctx['func'].append(func)
+        return func
 
-    def add_macro(self, macro):
+    def add_macro(self, name, param, body):
+        macro = {'name': name, 'param': param, 'body': body}
         self.macros.append(macro)
 
     def new_context(self):
@@ -247,6 +256,11 @@ def is_type_list(a):
     return type(a) is list
 
 
+def trace_eval(a, b):
+    if ENABLE_DEBUG:
+        print(f"== Eval {'list' if is_type_list(a) else 'atom'} {a} => {b}")
+
+
 class Evaluator:
     def __init__(self):
         self.context = Context()
@@ -263,10 +277,6 @@ class Evaluator:
                 lst[i] = next_value
             i += 1
 
-    def trace_eval(self, a, b):
-        if ENABLE_DEBUG:
-            print(f"== Eval {'list' if is_type_list(a) else 'atom'} {a} => {b}")
-
     def macro_call(self, macro, sexpr_list):
         # Macros returns a form, not a value
         assert len(macro['param']) == len(sexpr_list) - 1, "parameter mismatched"
@@ -274,7 +284,7 @@ class Evaluator:
         new_ctx = self.context.new_context()
         for i in range(0, len(macro['param'])):
             # pass source code as arguments directly
-            self.context.add_variable({"name": macro['param'][i], "value": sexpr_list[i + 1]}, new_ctx)
+            self.context.add_var(macro['param'][i], sexpr_list[i + 1], new_ctx)
 
         # Call builtin or user defined function
         self.context.enter_context(new_ctx)
@@ -288,13 +298,13 @@ class Evaluator:
         # TODO: revise this later
         return body[0]
 
-    def call(self, func, lst):
+    def func_call(self, func, lst):
         # Functions return a value as expected
         assert len(func['param']) == len(lst) - 1, "parameter mismatched"
         # Prologue, prepare arguments
         new_ctx = self.context.new_context()
         for i in range(0, len(func['param'])):
-            self.context.add_variable({"name": func['param'][i], "value": self.eval_form(lst[i + 1])}, new_ctx)
+            self.context.add_var(func['param'][i], self.eval_form(lst[i + 1]), new_ctx)
 
         # Call builtin or user defined function
         self.context.enter_context(new_ctx)
@@ -347,13 +357,13 @@ class Evaluator:
     def eval_form(self, lst):
         if not is_type_list(lst):
             val = self.eval_atom(lst)
-            self.trace_eval(lst, val)
+            trace_eval(lst, val)
             return val
 
         # () is evaluated to nil, which is equivalent to "None"
         # in our implementation
         if len(lst) == 0:
-            self.trace_eval(lst, None)
+            trace_eval(lst, None)
             return None
 
         action = lst[0]
@@ -365,8 +375,8 @@ class Evaluator:
         if "body" in action:
             # (<func> ...)
             func = action
-            val = self.call(func, lst)
-            self.trace_eval(lst, func)
+            val = self.func_call(func, lst)
+            trace_eval(lst, func)
             return val
         elif action == 'quote' or action == "'":
             # (quote a)
@@ -374,19 +384,19 @@ class Evaluator:
             # Note, quote has been processed when making the s-expression list
             # so any form of ' ... should be (` ...), i.e. its operand is surrounded
             # with list, we need to unpack it here
-            self.trace_eval(lst, lst[1])
+            trace_eval(lst, lst[1])
             return lst[1]
         elif action == '`':
             # `((+ 1 2) ,(+1 2))
             ret_val = lst[1]
             self.allow_eval(ret_val)
-            self.trace_eval(lst, ret_val)
+            trace_eval(lst, ret_val)
             return ret_val
         elif action == 'block':
             # (block (..) (..) (..))
             exprs = lst[1:]
             ret_val = self.eval_block(exprs)
-            self.trace_eval(lst, ret_val)
+            trace_eval(lst, ret_val)
             return ret_val
         elif action == 'if':
             # (if cond (then-block) (else-block)? )
@@ -397,7 +407,7 @@ class Evaluator:
             else:
                 if len(lst) == 4:
                     val = self.eval_form(lst[3])
-            self.trace_eval(lst, val)
+            trace_eval(lst, val)
             return val
         elif action == 'for':
             # (for (i 0) (< i 10) (+ i 1) (...))
@@ -406,7 +416,7 @@ class Evaluator:
             stride = lst[3]
             body = lst[4]
             new_ctx = self.context.new_context()
-            self.context.add_variable({'name': init[0], 'value': self.eval_form(init[1])}, new_ctx)
+            self.context.add_var(init[0], self.eval_form(init[1]), new_ctx)
 
             self.context.enter_context(new_ctx)
             while self.eval_form(cond):
@@ -414,7 +424,7 @@ class Evaluator:
                 new_val = self.eval_form(stride)
                 self.context.find_var(init[0])['value'] = new_val
             self.context.leave_context()
-            self.trace_eval(lst, None)
+            trace_eval(lst, None)
             return None
         elif action == 'let':
             # (let ((a 11) (b 12) c) ...)
@@ -425,16 +435,16 @@ class Evaluator:
                     assert len(var_binding) == 2, "must be initialization of var binding"
                     name = var_binding[0]
                     value = self.eval_form(var_binding[1])
-                    self.context.add_variable({"name": name, "value": value}, new_ctx)
+                    self.context.add_var(name, value, new_ctx)
                 else:
                     assert len(var_binding) == 1, "must be default initialization of var binding"
                     name = var_binding[0]
-                    self.context.add_variable({"name": name, "value": None}, new_ctx)
+                    self.context.add_var(name, None, new_ctx)
 
             self.context.enter_context(new_ctx)
             ret_val = self.eval_block(lst[2:])
             self.context.leave_context()
-            self.trace_eval(lst, ret_val)
+            trace_eval(lst, ret_val)
             return ret_val
         elif action == 'setq':
             # (setq name "Zhao")
@@ -444,8 +454,8 @@ class Evaluator:
             for i in range(0, len(exprs), 2):
                 symbol = exprs[i]
                 value = self.eval_form(exprs[i + 1])
-                self.context.add_variable({'name': symbol, 'value': value})
-            self.trace_eval(lst, None)
+                self.context.add_var(symbol, value)
+            trace_eval(lst, None)
             return None
         elif action == 'cons':
             # (cons 1 (cons 2 (cons 3 nil)))
@@ -454,7 +464,7 @@ class Evaluator:
             value = [first]
             if second is not None:
                 value += second
-            self.trace_eval(lst, value)
+            trace_eval(lst, value)
             return value
         elif action == 'first':
             # (first '(1 2 4 5 6))
@@ -462,7 +472,7 @@ class Evaluator:
             if not is_type_list(value):
                 raise RuntimeError("Expect an list as its argument")
             value = value[0]
-            self.trace_eval(lst, value)
+            trace_eval(lst, value)
             return value
         elif action == 'rest':
             # (rest '(1 2 4 5 6))
@@ -470,7 +480,7 @@ class Evaluator:
             if not is_type_list(value):
                 raise RuntimeError("Expect an list as its argument")
             value = value[1:]
-            self.trace_eval(lst, value)
+            trace_eval(lst, value)
             return value
 
         elif action == 'list':
@@ -478,19 +488,17 @@ class Evaluator:
             value = []
             for expr in lst[1:]:
                 value += [self.eval_form(expr)]
-            self.trace_eval(lst, value)
+            trace_eval(lst, value)
             return value
         elif action == 'defun':
             # (def name () ...)
-            func = {'name': lst[1], 'param': lst[2], 'body': lst[3:]}
-            self.context.add_func(func)
-            self.trace_eval(lst, func)
+            func = self.context.add_func(lst[1], lst[2], lst[3:])
+            trace_eval(lst, func)
             return func
         elif action == 'lambda':
             # (lambda () ...)
-            func = {'name': '<lambda>', 'param': lst[1], 'body': lst[2:]}
-            self.context.add_func(func)
-            self.trace_eval(lst, func)
+            func = self.context.add_func('<lambda>', lst[1], lst[2:])
+            trace_eval(lst, func)
             return func
         elif action == 'defmacro':
             raise RuntimeError("Macro should be already collected and expanded")
@@ -498,13 +506,13 @@ class Evaluator:
             # (foo ...)
             var = self.context.find_var(action)
             if var is not None:
-                self.trace_eval(lst, var['value'])
+                trace_eval(lst, var['value'])
                 return var['value']
 
             func = self.context.find_func(action)
             if func is not None:
-                val = self.call(func, lst)
-                self.trace_eval(lst, val)
+                val = self.func_call(func, lst)
+                trace_eval(lst, val)
                 return val
 
             macro = self.find_macro(action)
@@ -520,10 +528,9 @@ class Evaluator:
             expr = sexpr_list[idx]
             if is_type_list(expr) and len(expr) > 0:
                 if expr[0] == 'defmacro':
-                    macro = {'name': expr[1], 'param': expr[2], 'body': expr[3:]}
-                    self.context.add_macro(macro)
+                    self.context.add_macro(expr[1], expr[2], expr[3:])
                     if ENABLE_DEBUG:
-                        print(f"Find macro definition {macro['name']}")
+                        print(f"Find macro definition {expr[1]}")
                     del sexpr_list[idx]
                     continue
             idx += 1
