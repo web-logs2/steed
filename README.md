@@ -15,6 +15,8 @@ Steed - an easy-to-use dialect of lisp
 11
 > (add 7 8)
 15
+> 'abc
+abc
 ```
 Or *compile* source code and execute it by [Steed Interpreter](src/steed.py) as normal
 

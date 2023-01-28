@@ -26,9 +26,9 @@ while True:
     line = input("> ")
     try:
         lst = SyntaxParser.parse_text(line)
-        print(e.eval_form(lst[0]))
-    except RuntimeError as e:
-        print("Error during parsing")
-        print(e)
+        val = e.eval_form(lst[0])
+        print(val)
+    except RuntimeError as ex:
+        print(f"RuntimeError: {ex}")
 
 
