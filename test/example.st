@@ -105,3 +105,9 @@
 (when true (format "{}" "when macro"))
 -444
 "abc"
+(defun foo (&key a b c) (list a b c))
+(assert (eq (foo) (list () () ())) "why not")
+(assert (eq (foo :c 3 :a 1) (list 1 () 3)) "why not")
+(assert (eq (foo :a 1 :b 2 :c 3) (list 1 2 3)) "why not")
+(assert (eq (foo :c 3 :a 1 :b 2) (list 1 2 3)) "why not")
+(assert (eq (foo :a 1 :b 2) (list 1 2 nil)) "why not")

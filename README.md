@@ -29,19 +29,8 @@ Or *compile* source code and execute it by [Steed Interpreter](src/steed.py) as 
 `1 3.4 -6 foo bar`
 #### **Lambda** 
 `(lambda () ...)`
-#### **Function Definition** 
-`(defun name () ...)`
-#### **Function Call** 
-`(<func> ...)`
 #### **Block**
 `(block (..) (..) (..))`
-#### **Let Binding** 
-```
-(let ((a 11)
-       (b 12) 
-       c) 
-       ...)
-```
 #### **If** 
 `(if cond (then-block) (else-block)? )`
 #### **For** 
@@ -50,6 +39,28 @@ Or *compile* source code and execute it by [Steed Interpreter](src/steed.py) as 
 `(defmacro name () ...)`
 #### **Set Value** 
 `(setq name "Tang")`
+
+#### **Function**
+- Definition
+`(defun name () ...)`
+- Invocation
+`(<func> ...)`
+- Keyword parameters
+```
+(defun foo (&key a b c) (list a b c))
+(foo :a 1 :b 2 :c 3) => [1, 2, 3]
+(foo :c 3 :a 1 :b 2) => [1, 2, 3]
+(foo)                => [None, None, None]
+(foo :a 1 :b 2)      => [1, 2, None]
+```
+
+#### **Let Binding** 
+```
+(let ((a 11)
+       (b 12) 
+       c) 
+       ...)
+```
 #### **Quote**
 ```
 (quote a)

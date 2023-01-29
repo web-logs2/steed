@@ -21,6 +21,7 @@ import sys
 ENABLE_DEBUG = False
 INVALID_ATOM_PREFIX = "Invalid-"
 
+
 #
 # A list can be a lot of things in Lisp. In the most general sense, a list
 # can be either a program or data. And because lists can themselves be made
@@ -107,16 +108,16 @@ class SyntaxParser:
                 i += 1
             return s, i
 
-        if self.text[idx].isalpha():
-            # identifiers
-            s, i = accept_if(idx, lambda c: ('a' <= c <= 'z') or ('A' <= c <= 'Z') or c == '-')
+        if self.text[idx].isalpha() or self.text[idx] in '&:':
+            # symbol, &symbol, :symbol
+            s, i = accept_if(idx, lambda c: ('a' <= c <= 'z') or ('A' <= c <= 'Z') or c in '-&:')
             if s == 'true' or s == 'false':
                 return eval(s.title()), i
             elif s == 'nil':
                 return None, i
             return s, i
         elif self.text[idx] in '()+*/%\'`,':
-            # operators
+            # operator
             return self.text[idx], idx + 1
         elif self.text[idx] in '><=!':
             tk = self.text[idx]
@@ -303,12 +304,26 @@ class Evaluator:
         return body[0]
 
     def func_call(self, func, lst):
-        # Functions return a value as expected
-        assert len(func['param']) == len(lst) - 1, "parameter mismatched"
         # Prologue, prepare arguments
         new_ctx = self.context.new_context()
-        for i in range(0, len(func['param'])):
-            self.context.add_var(func['param'][i], self.eval_form(lst[i + 1]), new_ctx)
+        has_keyword_param = True if len(func['param']) >= 1 and func['param'][0] == '&key' else False
+        if has_keyword_param:
+            # (defun foo (&key a b c) ...)
+            # (foo :a 2 :b)
+            for i in range(1, len(func['param'])):
+                param = func['param'][i]
+                keyword_param_idx= -1
+                for k in range(1, len(lst)):
+                    if lst[k] == f":{param}":
+                        keyword_param_idx = k
+                        break
+                arg_val = self.eval_form(lst[keyword_param_idx + 1]) if keyword_param_idx != -1 else None
+                self.context.add_var(func['param'][i], arg_val, new_ctx)
+        else:
+            # eval arguments as usual
+            for i in range(0, len(func['param'])):
+                arg_val = self.eval_form(lst[i + 1]) if i + 1 < len(lst) else None
+                self.context.add_var(func['param'][i], arg_val, new_ctx)
 
         # Call builtin or user defined function
         self.context.enter_context(new_ctx)
@@ -353,7 +368,7 @@ class Evaluator:
         else:
             # Otherwise, it's a representation of variable
             var = self.context.find_var(atom)
-            if var is not None and var['value'] is not None:
+            if var is not None:
                 return var['value']
 
         raise RuntimeError(f'Unknown form {atom} during syntax parsing')
@@ -508,16 +523,16 @@ class Evaluator:
             raise RuntimeError("Macro should be already collected and expanded")
         else:
             # (foo ...)
-            var = self.context.find_var(action)
-            if var is not None:
-                trace_eval(lst, var['value'])
-                return var['value']
-
             func = self.context.find_func(action)
             if func is not None:
                 val = self.func_call(func, lst)
                 trace_eval(lst, val)
                 return val
+
+            var = self.context.find_var(action)
+            if var is not None:
+                trace_eval(lst, var['value'])
+                return var['value']
 
             macro = self.find_macro(action)
             if macro is not None:
