@@ -3,7 +3,7 @@
 )
 (concate "hello" "world")
 (assert
-    (==
+    (eq
         ((lambda ( x y) (+ x y)) 2 3)
         5
     )
@@ -19,10 +19,10 @@
     )
 )
 
-(if true ( format "{}" "then-block"))
-(if true ( format "{}" "then-block") (format "{}" "else-block") )
-(if false ( format "{}" "then-block") (format "{}" "else-block"))
-(if false ( format "{}" "then-block"))
+(if t ( format "{}" "then-block"))
+(if t ( format "{}" "then-block") (format "{}" "else-block") )
+(if nil ( format "{}" "then-block") (format "{}" "else-block"))
+(if nil ( format "{}" "then-block"))
 
 (format "{}" (block (+ 1 1) (- 1 1) (* 9 9)))
 
@@ -31,11 +31,11 @@
 (format "{}" `(4 5))
 (format "{}" `(4 5 (7 8 ,(+ 6 4) ,120)))
 
-(format "{}" (when true (+1 2)) )
-(format "{}" (when false (+1 2)) )
+(format "{}" (when t (+1 2)) )
+(format "{}" (when nil (+1 2)) )
 
 (assert (<= 3 5) "yes")
-(assert (== (>=4 99) false) "yes")
+(assert (eq (>= 4 99) nil) "yes")
 (assert (!= 3 5) "yes")
 
 (for (i 0) (< i 5) (+ i 1)
@@ -47,14 +47,14 @@
 (setq foo "=foo=" bar foo)
 (format "{}" foo)
 (format "{}" bar)
-(assert (== "=foo=" foo) "why not")
+(assert (eq "=foo=" foo) "why not")
 (assert (!= "-foo=" foo) "why not")
-(assert (== "=foo=" bar) "why not")
+(assert (eq "=foo=" bar) "why not")
 (assert (!= "-foo=" bar) "why not")
 (let ((a 3)
         (b 4)
         (c 5))
-    (assert (== 35 (* (+ a b) c) ) "why not" ))
+    (assert (eq 35 (* (+ a b) c) ) "why not" ))
 (let ((a 3))
     (+ a 2))
 (setq w 77)
@@ -82,10 +82,10 @@
 (first (rest (rest my-list)))
 (rest (rest (rest my-list)))
 (first (rest (rest (rest my-list))))
-(assert (== (first (list 4 2 3)) 4 ) "why not")
-(assert (== (rest (list 4 2 3)) '(2 3 )) "why not")
-(assert (== (rest (list 4 2 3)) (quote(2 3 ))) "why not")
-(assert (== (rest (list 4 2 3)) (list 2 3 )) "why not")
+(assert (eq (first (list 4 2 3)) 4 ) "why not")
+(assert (eq (rest (list 4 2 3)) '(2 3 )) "why not")
+(assert (eq (rest (list 4 2 3)) (quote(2 3 ))) "why not")
+(assert (eq (rest (list 4 2 3)) (list 2 3 )) "why not")
 (eq 'a 'a)
 (eq 'david 'a)
 (eq 'David 'DAVID)
@@ -102,7 +102,7 @@
 (/ 15.0 2) ;test comment
 (* 3 9)     ; test comment
 (/ 1 3)
-(when true (format "{}" "when macro"))
+(when t (format "{}" "when macro"))
 -444
 "abc"
 (defun foo (&key a b c) (list a b c))
@@ -111,3 +111,10 @@
 (assert (eq (foo :a 1 :b 2 :c 3) (list 1 2 3)) "why not")
 (assert (eq (foo :c 3 :a 1 :b 2) (list 1 2 3)) "why not")
 (assert (eq (foo :a 1 :b 2) (list 1 2 nil)) "why not")
+(list (quote a) (quote (cons a 3)))
+(setq fn '+)
+(format "{}" (fn 1 2))
+(setq a-string "This string
+contains
+forty-two characters.")
+(format "{}" a-string)

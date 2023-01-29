@@ -1,7 +1,7 @@
 # Steed
-<img src="asset/logo.png?raw=true" align="right" alt="" weight="120" height="120"/>Hello, this is a free and complete lisp implementation, most of my Lisp knowledge comes from [Practical Common List](https://gigamonkeys.com/book/) and [Successful Lisp(Primary)](https://dept-info.labri.fr/~strandh/Teaching/MTP/Common/David-Lamkins/contents.html),
+<img src="asset/logo.png?raw=true" align="right" alt="" weight="120" height="120"/>Hello, this is a free and complete(expected to be) ANSI Common Lisp implementation, most of my Lisp knowledge comes from [Practical Common List](https://gigamonkeys.com/book/) and [Successful Lisp(Primary)](https://dept-info.labri.fr/~strandh/Teaching/MTP/Common/David-Lamkins/contents.html),
 and some old memories from SICP. All of these make up my impression on Lisp.
-The main reference manual is Successful Lisp, which contains core design and core concepts of Lisp, I will re-design and implement the parts that do not suit my taste.
+The main reference manual is Successful Lisp, which contains core design and core concepts of Lisp. [GNU CLisp](https://gitlab.com/gnu-clisp/clisp) also helped me understand the implementation of some macro definitions, and I'd like to written a new standard library according to my understanding.
 
 ## Getting started
 You can use [Steed REPL](src/repl.py) to examine your coding ideas quickly:
@@ -82,7 +82,7 @@ The second argument must be a list or NIL.
 - `first` `(first (list 1 2 4))`
 - `rest` `(rest (list 1 2 4))`
 
-## [Standard library](src/stdlib.st)
+## [Standard library](src/stdlib.lisp)
 #### rcons
 ```
 (cons 1 '(2 3)) => [1, 2, 3]
@@ -98,3 +98,10 @@ Append element at the end of list, reverse version of `cons`
 ```
 (unless (== 3 (+ 1 2)) (...))
 ```
+
+## Reference
+- [Common Lisp the Language, 2nd Edition](https://www.cs.cmu.edu/Groups/AI/html/cltl/clm/node1.html)
+- [ANSI Common Lisp Chinese](https://acl.readthedocs.io/en/latest/index.html)
+- [Practical Common List](https://gigamonkeys.com/book/)
+- [Successful Lisp(Primary)](https://dept-info.labri.fr/~strandh/Teaching/MTP/Common/David-Lamkins/contents.html)
+- [GNU CLisp](https://gitlab.com/gnu-clisp/clisp) 

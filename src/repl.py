@@ -19,7 +19,7 @@ from src.steed import SyntaxParser, Evaluator
 print("\033[1mSteed - an easy-to-use dialect of lisp\033[0m")
 
 src_dir = os.path.dirname(os.path.realpath(__file__))
-lst_stdlib = SyntaxParser.parse_file(src_dir + "/stdlib.st")
+lst_stdlib = SyntaxParser.parse_file(src_dir + "/stdlib.lisp")
 e = Evaluator()
 
 while True:
