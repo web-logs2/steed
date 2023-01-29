@@ -103,3 +103,5 @@
 (* 3 9)     ; test comment
 (/ 1 3)
 (when true (format "{}" "when macro"))
+-444
+"abc"

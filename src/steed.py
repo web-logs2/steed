@@ -17,6 +17,10 @@ import re
 import sys
 
 # Steed - an easy-to-use dialect of lisp
+
+ENABLE_DEBUG = False
+INVALID_ATOM_PREFIX = "Invalid-"
+
 #
 # A list can be a lot of things in Lisp. In the most general sense, a list
 # can be either a program or data. And because lists can themselves be made
@@ -27,10 +31,6 @@ import sys
 # a list, you'd like to have a name for the things that appear between the
 # parentheses the things that are not themselves lists, but rather words
 # and numbers. These things are called atoms.
-ENABLE_DEBUG = False
-INVALID_ATOM_PREFIX = "Invalid-"
-
-
 class SyntaxParser:
 
     def __init__(self, text):
@@ -126,15 +126,19 @@ class SyntaxParser:
             return tk, idx + 1
         elif self.text[idx] == '\"':
             # string
-            end = self.text.index('\"', idx + 1)
-            return self.text[idx:end + 1], end + 1
+            try:
+                end = self.text.index('\"', idx + 1)
+            except ValueError:
+                raise RuntimeError("Invalid string literal")
+            else:
+                return self.text[idx:end + 1], end + 1
         elif self.text[idx].isnumeric() or self.text[idx] == '-':
             # minus(-) operator
             if self.text[idx] == '-':
                 if idx + 1 < len(self.text) and (not self.text[idx + 1].isnumeric()):
                     return "-", idx + 1
             # 3.14, -3
-            s, i = accept_if(idx, lambda c: c.isnumeric() or c == '.')
+            s, i = accept_if(idx, lambda c: c.isnumeric() or c == '.' or c == '-')
             return eval(s), i
         elif self.text[idx] == ' ':
             return " ", idx + 1
