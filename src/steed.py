@@ -287,28 +287,7 @@ class Evaluator:
                 lst[i] = next_value
             i += 1
 
-    def macro_call(self, macro, sexpr_list):
-        # Macros returns a form, not a value
-        assert len(macro['param']) == len(sexpr_list) - 1, "parameter mismatched"
-        # Prologue, prepare arguments
-        new_ctx = self.context.new_context()
-        for i in range(0, len(macro['param'])):
-            # pass source code as arguments directly
-            self.context.add_var(macro['param'][i], sexpr_list[i + 1], new_ctx)
-
-        # Call builtin or user defined function
-        self.context.enter_context(new_ctx)
-        # Clone macro code body as template for later code generation
-        body = copy.deepcopy(macro['body'])
-        for i, expr in enumerate(body):
-            val = self.eval_form(expr)
-            # Replace macro body with evaluated value
-            body[i] = val
-        self.context.leave_context()
-        # TODO: revise this later
-        return body[0]
-
-    def func_call(self, func, lst):
+    def eval_call(self, func, lst, is_macro_call=False):
         # Prologue, prepare arguments
         new_ctx = self.context.new_context()
         has_keyword_param = True if len(func['param']) >= 1 and func['param'][0] == '&key' else False
@@ -322,25 +301,50 @@ class Evaluator:
                     if lst[k] == f":{param}":
                         keyword_param_idx = k
                         break
-                arg_val = self.eval_form(lst[keyword_param_idx + 1]) if keyword_param_idx != -1 else None
+
+                if keyword_param_idx != -1:
+                    if not is_macro_call:
+                        # eval argument as usual
+                        arg_val = self.eval_form(lst[keyword_param_idx + 1])
+                    else:
+                        # pass source code as arguments directly
+                        arg_val = lst[keyword_param_idx + 1]
+                else:
+                    arg_val = None
                 self.context.add_var(func['param'][i], arg_val, new_ctx)
         else:
             # eval arguments as usual
             for i in range(0, len(func['param'])):
-                arg_val = self.eval_form(lst[i + 1]) if i + 1 < len(lst) else None
+                if not is_macro_call:
+                    arg_val = self.eval_form(lst[i + 1]) if i + 1 < len(lst) else None
+                else:
+                    arg_val = lst[i + 1]
                 self.context.add_var(func['param'][i], arg_val, new_ctx)
 
-        # Call builtin or user defined function
+        # {
         self.context.enter_context(new_ctx)
-        body = func['body']
-        if callable(body):
-            args = {}
-            for item in new_ctx['var']:
-                args[item['name']] = item['value']
-            ret_val = body(args)
+        if not is_macro_call:
+            # Call builtin or user defined function
+            body = func['body']
+            if callable(body):
+                args = {}
+                for item in new_ctx['var']:
+                    args[item['name']] = item['value']
+                ret_val = body(args)
+            else:
+                ret_val = self.eval_block(body)
         else:
-            ret_val = self.eval_block(body)
+            # Clone macro code body as template for later code generation
+            body = copy.deepcopy(func['body'])
+            for i, expr in enumerate(body):
+                val = self.eval_form(expr)
+                # Replace macro body with evaluated value
+                body[i] = val
+            # TODO: revise below line later
+            ret_val = body[0]
+
         self.context.leave_context()
+        # }
         return ret_val
 
     def eval_top_level(self, lst):
@@ -400,7 +404,7 @@ class Evaluator:
         if "body" in action:
             # (<func> ...)
             func = action
-            val = self.func_call(func, lst)
+            val = self.eval_call(func, lst)
             Evaluator.trace_eval(lst, func)
             return val
         elif action == 'quote' or action == "'":
@@ -531,7 +535,7 @@ class Evaluator:
             # (foo ...)
             func = self.context.find_func(action)
             if func is not None:
-                val = self.func_call(func, lst)
+                val = self.eval_call(func, lst)
                 Evaluator.trace_eval(lst, val)
                 return val
 
@@ -543,7 +547,7 @@ class Evaluator:
                 func = self.context.find_func(var_as_fn)
                 if func is None:
                     raise RuntimeError(f"Call to undefined symbol {var['value']}")
-                val = self.func_call(func, lst)
+                val = self.eval_call(func, lst)
                 Evaluator.trace_eval(lst, val)
                 return val
 
@@ -582,7 +586,7 @@ class Evaluator:
                     macro = self.find_macro(sexpr[0])
                     if macro is not None:
                         assert len(sexpr[1:]) == len(macro['param']), "num of macro parameters mismatched"
-                        expanded = self.macro_call(macro, sexpr)
+                        expanded = self.eval_call(macro, sexpr, is_macro_call=True)
                         sexpr_list[idx] = expanded
                         continue
                 self.expand_macro(sexpr)
