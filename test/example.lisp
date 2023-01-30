@@ -118,3 +118,5 @@
 contains
 forty-two characters.")
 (format "{}" a-string)
+(let ((x '(1 2 3 4))) `(this is an example ,x of expansion))
+(let ((x '(1 2 3 4))) `(this is an example ,@x of expansion))

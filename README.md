@@ -63,9 +63,10 @@ Or *compile* source code and execute it by [Steed Interpreter](src/steed.py) as 
 ```
 #### **Quote**
 ```
-(quote a)
-'(a b)
-`((+ 1 2) ,(+1 2))
+> (let ((x '(1 2 3 4))) `(this is an example ,x of expansion))
+['this', 'is', 'an', 'example', [1, 2, 3, 4], 'of', 'expansion']
+> (let ((x '(1 2 3 4))) `(this is an example ,@x of expansion))
+['this', 'is', 'an', 'example', 1, 2, 3, 4, 'x', 'of', 'expansion']
 ```
 #### **List Manipulation**
 - `cons`

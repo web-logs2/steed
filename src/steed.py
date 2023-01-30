@@ -51,16 +51,22 @@ class Evaluator:
         if ENABLE_DEBUG:
             print(f"== Eval {'list' if is_type_list(a) else 'atom'} {a} => {b}")
 
-    def allow_eval(self, lst):
-        # [, (...)] => (...)
+    def eval_quote(self, lst):
+        # ,(+ 1 2) => 3
+        # ,@(1 2)  => 1 2
         i = 0
         while i < len(lst):
             if is_type_list(lst[i]):
-                self.allow_eval(lst[i])
+                self.eval_quote(lst[i])
             elif lst[i] == ',':
                 next_value = self.eval_form(lst[i + 1])
                 del lst[i:i + 1]
                 lst[i] = next_value
+            elif lst[i] == ',@':
+                next_value = self.eval_form(lst[i + 1])
+                if not is_type_list(next_value):
+                    raise RuntimeError(f"expect an list but got {next_value}")
+                lst[i:i+1] = next_value
             i += 1
 
     def eval_call(self, func, lst, is_macro_call=False):
@@ -192,9 +198,9 @@ class Evaluator:
             Evaluator.trace_eval(lst, lst[1])
             return lst[1]
         elif action == '`':
-            # `((+ 1 2) ,(+1 2))
+            # `((+ 1 2) ,(+1 2) ,@(1 2))
             ret_val = lst[1]
-            self.allow_eval(ret_val)
+            self.eval_quote(ret_val)
             Evaluator.trace_eval(lst, ret_val)
             return ret_val
         elif action == 'block':

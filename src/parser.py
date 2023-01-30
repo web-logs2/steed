@@ -77,7 +77,7 @@ class SyntaxParser:
         while k < len(lst):
             if type(lst[k]) is list:
                 self.process_quote(lst[k])
-            elif lst[k] == "'" or lst[k] == '`' or lst[k] == ',':
+            elif lst[k] == "'" or lst[k] == '`' or lst[k] == ',' or lst[k] == ',@':
                 sub = [lst[k], lst[k + 1]]
                 del lst[k:k + 1]
                 lst[k] = sub
@@ -111,7 +111,9 @@ class SyntaxParser:
                 return None, i
             return s, i
         elif self.text[idx] in '()+*/%\'`,':
-            # operator
+            # operator(+-*/%), `(this is ,a ,@b ), 'this
+            if idx + 1 < len(self.text) and self.text[idx:idx + 2] == ',@':
+                return ',@', idx + 2
             return self.text[idx], idx + 1
         elif self.text[idx] in '><=!':
             tk = self.text[idx]
