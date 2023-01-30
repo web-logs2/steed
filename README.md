@@ -29,8 +29,8 @@ Or *compile* source code and execute it by [Steed Interpreter](src/steed.py) as 
 `1 3.4 -6 foo bar`
 #### **Lambda** 
 `(lambda () ...)`
-#### **Block**
-`(block (..) (..) (..))`
+#### **Progn**
+`(progn (..) (..) (..))`
 #### **If** 
 `(if cond (then-block) (else-block)? )`
 #### **For** 

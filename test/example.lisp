@@ -24,7 +24,7 @@
 (if nil ( format "{}" "then-block") (format "{}" "else-block"))
 (if nil ( format "{}" "then-block"))
 
-(format "{}" (block (+ 1 1) (- 1 1) (* 9 9)))
+(format "{}" (progn (+ 1 1) (- 1 1) (* 9 9)))
 
 (format "{}" '(1 2 3))
 (format "{}" '3)
@@ -39,7 +39,7 @@
 (assert (!= 3 5) "yes")
 
 (for (i 0) (< i 5) (+ i 1)
-    (block (format "{}" i)
+    (progn (format "{}" i)
     (assert (< i 10) "why not")
     )
 )
@@ -120,3 +120,5 @@ forty-two characters.")
 (format "{}" a-string)
 (let ((x '(1 2 3 4))) `(this is an example ,x of expansion))
 (let ((x '(1 2 3 4))) `(this is an example ,@x of expansion))
+(defun f (x) `(here ,@x we go))
+(f '(1 2 3))

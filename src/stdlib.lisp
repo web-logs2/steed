@@ -13,11 +13,11 @@
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>
 
 (defmacro when (cond body)
-    `(if ,cond (block ,body))
+    `(if ,cond (progn ,body))
 )
 
 (defmacro unless (cond body)
-    `(if (not ,cond) (block ,body))
+    `(if (not ,cond) (progn ,body))
 )
 
 (defmacro dotimes (name limit body)

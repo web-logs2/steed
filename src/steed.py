@@ -42,6 +42,23 @@ def is_logically_true(a):
     return a is not None
 
 
+def classify_lambda_list_keywords(params):
+    category = []
+    i = 0
+    while i < len(params):
+        keyword_name = params[i] if params[i].startswith('&') else "&normal"
+        keyword_params = []
+        k = i + 1 if params[i].startswith('&') else i
+        while k < len(params):
+            if params[k].startswith('&'):
+                break
+            keyword_params.append(params[k])
+            k += 1
+        category.append({"keyword_name": keyword_name, "keyword_params": keyword_params})
+        i = k
+    return category
+
+
 class Evaluator:
     def __init__(self):
         self.context = Context()
@@ -66,42 +83,54 @@ class Evaluator:
                 next_value = self.eval_form(lst[i + 1])
                 if not is_type_list(next_value):
                     raise RuntimeError(f"expect an list but got {next_value}")
-                lst[i:i+1] = next_value
+                lst[i:i + 1] = next_value
             i += 1
 
-    def eval_call(self, func, lst, is_macro_call=False):
-        # Prologue, prepare arguments
-        new_ctx = self.context.new_context()
-        has_keyword_param = True if len(func['param']) >= 1 and func['param'][0] == '&key' else False
-        if has_keyword_param:
-            # (defun foo (&key ay a b c) ...)
-            # (foo :a 2 :b)
-            for i in range(1, len(func['param'])):
-                param = func['param'][i]
-                keyword_param_idx = -1
-                for k in range(1, len(lst)):
-                    if lst[k] == f":{param}":
-                        keyword_param_idx = k
-                        break
+    def eval_lambda_list(self, params, lst, ctx, is_macro_call):
+        lambda_list_keywords = classify_lambda_list_keywords(params)
+        param_i = 0
+        for keyword in lambda_list_keywords:
+            kw_name = keyword['keyword_name']
+            kw_params = keyword['keyword_params']
 
-                if keyword_param_idx != -1:
+            if kw_name == '&normal':
+                # (defun foo (a a b c) ...)
+                # (foo 1 2 3)
+                while param_i < len(kw_params):
                     if not is_macro_call:
-                        # eval argument as usual
-                        arg_val = self.eval_form(lst[keyword_param_idx + 1])
+                        arg_val = self.eval_form(lst[param_i + 1]) if param_i + 1 < len(lst) else None
                     else:
-                        # pass source code as arguments directly
-                        arg_val = lst[keyword_param_idx + 1]
-                else:
-                    arg_val = None
-                self.context.add_var(func['param'][i], arg_val, new_ctx)
-        else:
-            # eval arguments as usual
-            for i in range(0, len(func['param'])):
-                if not is_macro_call:
-                    arg_val = self.eval_form(lst[i + 1]) if i + 1 < len(lst) else None
-                else:
-                    arg_val = lst[i + 1]
-                self.context.add_var(func['param'][i], arg_val, new_ctx)
+                        arg_val = lst[param_i + 1]
+                    self.context.add_var(kw_params[param_i], arg_val, ctx)
+                    param_i += 1
+            elif kw_name == '&key':
+                # (defun foo (&key a b c) ...)
+                # (foo :a 2 :b)
+                while param_i < len(kw_params):
+                    kw_param_idx = -1
+                    for t in range(1, len(lst)):
+                        if lst[t] == f":{kw_params[param_i]}":
+                            kw_param_idx = t
+                            break
+
+                    if kw_param_idx != -1:
+                        if not is_macro_call:
+                            # eval argument as usual
+                            arg_val = self.eval_form(lst[kw_param_idx + 1])
+                        else:
+                            # pass source code as arguments directly
+                            arg_val = lst[kw_param_idx + 1]
+                    else:
+                        arg_val = None
+                    self.context.add_var(kw_params[param_i], arg_val, ctx)
+                    param_i += 1
+            else:
+                pass
+
+    def eval_call(self, func, lst, is_macro_call=False):
+        # Prologue, process lambda list
+        new_ctx = self.context.new_context()
+        self.eval_lambda_list(func['param'], lst, new_ctx, is_macro_call)
 
         # {
         self.context.enter_context(new_ctx)
@@ -203,8 +232,8 @@ class Evaluator:
             self.eval_quote(ret_val)
             Evaluator.trace_eval(lst, ret_val)
             return ret_val
-        elif action == 'block':
-            # (block (..) (..) (..))
+        elif action == 'progn':
+            # (progn (..) (..) (..))
             exprs = lst[1:]
             ret_val = self.eval_block(exprs)
             Evaluator.trace_eval(lst, ret_val)
