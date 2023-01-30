@@ -14,7 +14,8 @@
 
 import os
 
-from src.steed import SyntaxParser, Evaluator
+from src.parser import SyntaxParser
+from src.steed import Evaluator
 
 print("\033[1mSteed - an easy-to-use dialect of lisp\033[0m")
 
