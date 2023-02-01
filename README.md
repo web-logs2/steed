@@ -83,7 +83,7 @@ The second argument must be a list or NIL.
 - `first` `(first (list 1 2 4))`
 - `rest` `(rest (list 1 2 4))`
 
-## [Standard library](src/stdlib.lisp)
+## [Standard library](stdlib/stdlib.lisp)
 #### rcons
 ```
 (cons 1 '(2 3)) => [1, 2, 3]

@@ -74,16 +74,18 @@ class Evaluator:
         i = 0
         while i < len(lst):
             if is_type_list(lst[i]):
-                self.eval_quote(lst[i])
-            elif lst[i] == ',':
-                next_value = self.eval_form(lst[i + 1])
-                del lst[i:i + 1]
-                lst[i] = next_value
-            elif lst[i] == ',@':
-                next_value = self.eval_form(lst[i + 1])
-                if not is_type_list(next_value):
-                    raise RuntimeError(f"expect an list but got {next_value}")
-                lst[i:i + 2] = next_value
+                if len(lst[i]) > 0 and (lst[i][0] == ',' or lst[i][0] == ',@'):
+                    assert len(lst[i]) == 2, "sanity check"
+                    next_value = self.eval_form(lst[i][1])
+                    if lst[i][0] == ',':
+                        lst[i] = next_value
+                    else:
+                        if not is_type_list(next_value):
+                            raise RuntimeError(f"expect an list but got {next_value}")
+                        lst[i:i + 1] = next_value
+                        pass
+                else:
+                    self.eval_quote(lst[i])
             i += 1
 
     def eval_lambda_list(self, params, lst, ctx, is_macro_call):
@@ -124,6 +126,13 @@ class Evaluator:
                         arg_val = None
                     self.context.add_var(kw_params[param_i], arg_val, ctx)
                     param_i += 1
+            elif kw_name == '&body' or kw_name == '&rest':
+                if len(kw_params) != 1:
+                    raise RuntimeError("&body parameter is invalid")
+                arg_val = []
+                for t in range(1 + param_i, len(lst)):
+                    arg_val.append(self.eval_form(lst[t]))
+                self.context.add_var(kw_params[0], arg_val, ctx)
             else:
                 pass
 
@@ -396,7 +405,6 @@ class Evaluator:
                 if type(sexpr[0]) is str:
                     macro = self.find_macro(sexpr[0])
                     if macro is not None:
-                        assert len(sexpr[1:]) == len(macro['param']), "num of macro parameters mismatched"
                         expanded = self.eval_call(macro, sexpr, is_macro_call=True)
                         sexpr_list[idx] = expanded
                         continue
@@ -416,7 +424,7 @@ if __name__ == '__main__':
             script_name = arg
 
     src_dir = os.path.dirname(os.path.realpath(__file__))
-    lst_stdlib = SyntaxParser.parse_file(src_dir + "/stdlib.lisp")
+    lst_stdlib = SyntaxParser.parse_file(src_dir + "/../stdlib/stdlib.lisp")
     lst_source = SyntaxParser.parse_file(script_name)
     e = Evaluator()
     e.eval_top_level(lst_stdlib)
