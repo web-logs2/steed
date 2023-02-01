@@ -81,6 +81,8 @@ class SyntaxParser:
                 sub = [lst[k], lst[k + 1]]
                 del lst[k:k + 1]
                 lst[k] = sub
+                if type(lst[k][1]) is list:
+                    self.process_quote(lst[k][1])
             k += 1
 
     def remove_comments(self):

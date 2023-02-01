@@ -83,7 +83,7 @@ class Evaluator:
                 next_value = self.eval_form(lst[i + 1])
                 if not is_type_list(next_value):
                     raise RuntimeError(f"expect an list but got {next_value}")
-                lst[i:i + 1] = next_value
+                lst[i:i + 2] = next_value
             i += 1
 
     def eval_lambda_list(self, params, lst, ctx, is_macro_call):
