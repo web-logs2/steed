@@ -11,13 +11,41 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>
+from enum import Enum
+
 from src.builtin import TheBuiltin
+from src.utils import is_type_list
+
+CtlFlag = Enum('CtlFlag', ['Normal', 'GOTO'])
 
 
 class Context:
     def __init__(self):
+        self.lexical_scope = None
+        self.label_map = None
         self.contexts = [{"func": [func for func in TheBuiltin], "var": []}]
         self.macros = []
+        self.ctl_flag = CtlFlag.Normal
+
+    def get_ctl_flag(self):
+        return self.ctl_flag
+
+    def set_ctl_flag(self, flag):
+        self.ctl_flag = flag
+
+    def enter_lexical_scope(self, scope):
+        self.lexical_scope = scope
+        self.label_map = {}
+
+    def find_continuation(self, label):
+        for i in range(len(self.lexical_scope)):
+            if self.lexical_scope[i] == label:
+                return self.lexical_scope[i + 1:]
+        return None
+
+    def leave_lexical_scope(self):
+        self.lexical_scope = None
+        self.label_map = None
 
     def find_func(self, name):
         for i in reversed(range(len(self.contexts))):

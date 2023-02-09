@@ -128,3 +128,8 @@ forty-two characters.")
 (show-members 'a 'b)
 (show-members 1 2 3 4)
 (show-members 1 2 3 4 5 6 7 8 9)
+(tagbody
+   (setq val 2)
+   (go lp)
+   (setq val 3)
+   lp (setq val 4))

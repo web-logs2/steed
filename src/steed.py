@@ -17,8 +17,9 @@ import re
 import sys
 
 # Steed - an easy-to-use dialect of lisp
-from src.context import Context
+from src.context import Context, CtlFlag
 from src.parser import SyntaxParser
+from src.utils import is_type_list
 
 ENABLE_DEBUG = False
 
@@ -33,8 +34,6 @@ ENABLE_DEBUG = False
 # symbols +, -, *, and / name the four common arithmetic operations: addition,
 # subtraction, multiplication, and division. Each of these symbols has an associated
 # function that performs the arithmetic operation.
-def is_type_list(a):
-    return type(a) is list
 
 
 def is_logically_true(a):
@@ -221,7 +220,7 @@ class Evaluator:
             action = self.eval_form(action)
             lst[0] = action
 
-        if "body" in action:
+        if type(action) is dict and "body" in action:
             # (<func> ...)
             func = action
             val = self.eval_call(func, lst)
@@ -331,7 +330,6 @@ class Evaluator:
             value = value[1:]
             Evaluator.trace_eval(lst, value)
             return value
-
         elif action == 'list':
             # (list 1 2 3)
             value = []
@@ -349,6 +347,33 @@ class Evaluator:
             func = self.context.add_func('<lambda>', lst[1], lst[2:])
             Evaluator.trace_eval(lst, func)
             return func
+        elif action == 'go':
+            # (go label)
+            continuation = self.context.find_continuation(lst[1])
+            if continuation is None:
+                raise RuntimeError(f"Can not find target label {lst[1]}")
+            self.context.set_ctl_flag(CtlFlag.GOTO)
+            return continuation
+        elif action == 'tagbody':
+            # (tagbody label ... (go label))
+            i = 1
+            value = None
+            self.context.enter_lexical_scope(lst)
+            code = lst[1:]
+            while i < len(code):
+                if is_type_list(lst[i]):
+                    val = self.eval_form(lst[i])
+                if self.context.get_ctl_flag() == CtlFlag.GOTO:
+                    code = val
+                    i = 0
+                    self.context.set_ctl_flag(CtlFlag.Normal)
+                    continue
+                if i == len(lst) - 1:
+                    value = val
+                i += 1
+            self.context.leave_lexical_scope()
+            Evaluator.trace_eval(lst, value)
+            return value
         elif action == 'defmacro':
             raise RuntimeError("Macro should be already collected and expanded")
         else:
